@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -87,7 +87,7 @@
     <div class="arena" id="battle-viewport">
       <div id="raid-timer-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(139,24,36,0.92);border:2px solid var(--red);padding:4px 12px;font-size:.78rem;font-weight:bold;color:#fff;z-index:20;border-radius:4px;box-shadow:0 0 10px rgba(255,71,87,0.6)">⏳ 차원 붕괴까지: <span id="raid-turns-left" style="color:var(--gold)">15</span>턴</div>
       <canvas class="bg" id="battle-bg"></canvas>
-      <div class="actor hero" id="hero-actor" style="position:relative"><canvas id="hero-battle-canvas"></canvas><canvas id="pet-battle-canvas" style="position:absolute;bottom:0;left:-32px;width:36px;height:36px;display:none"></canvas></div>
+      <div class="actor hero" id="hero-actor"><canvas id="hero-battle-canvas"></canvas><canvas id="pet-battle-canvas" style="position:absolute;bottom:0;left:-32px;width:36px;height:36px;display:none"></canvas></div>
       <div class="actor enemy" id="enemy-actor"><canvas id="monster-battle-canvas"></canvas></div>
       <canvas class="fx" id="battle-fx-canvas"></canvas>
       <div class="skip-overlay" id="skip-overlay"><button class="btn orange" data-act="skip">⚡ 스킵 (즉시 결착) [Enter]</button></div>

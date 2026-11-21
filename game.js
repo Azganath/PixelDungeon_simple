@@ -1658,7 +1658,29 @@ function renderMenu(st) {
   $('menu-grid').innerHTML = [
     mb(1, 'orange', '⚔️ 던전 입장 [Enter]', sub, 'startBattle()', true),
     mb('★', 'gold', '💪 영웅 훈련소 (골드로 7대 스탯 영구 강화)', '공격력 · 방어력 · 드랍률 · 치확 · 치피 · 최대체력 · 보스피해(최대 Lv.1000)', 'openStats()', true),
-    `<div class="chest-lv wide"><div class="top"><span>📦 소환 상자 등급 Lv.${lv} / 10</span><span>${expTxt}</span></div><div class="bar12"><div style="width:${lv >= 10 ? 100 : S.chestExp / cl.req * 100}%"></div></div><div style="font-size:.74rem">${rates} ${lv >= 10 ? '<span style="color:var(--gold);font-weight:bold">[장비 상자: 🌟전설 0.1% · 🌌신화 0.01% 해금!]</span>' : '<span style="color:var(--sub)">[장비 상자는 Lv.10 달성 시 전설/신화 해금]</span>'}</div></div>`,
+    `<div class="chest-lv wide"><div class="top"><span>📦 소환 상자 등급 Lv.${lv} / 10</span><span>${expTxt}</span></div><div class="bar12"><div style="width:${lv >= 10 ? 100 : S.chestExp / cl.req * 100}%"></div></div>${(() => {
+      const sum = cl.r[0] + cl.r[1] + cl.r[2];
+      const eLeg = lv >= 10 ? 0.1 : 0, eMyth = lv >= 10 ? 0.01 : 0, eRem = 100 - (eLeg + eMyth);
+      const sLeg = Math.min(1.8, cl.r[3] * 0.2), sMyth = Math.min(0.4, cl.r[4] * 0.15), sRem = 100 - (sLeg + sMyth);
+      const base3 = (arr) =>
+        `<span style="color:#b2bec3">일반 ${arr[0].toFixed(1)}%</span> · ` +
+        `<span style="color:#00cec9">희귀 ${arr[1].toFixed(1)}%</span> · ` +
+        `<span style="color:#a55eea">영웅 ${arr[2].toFixed(1)}%</span>`;
+      const high2 = (leg, myth, legDec, mythDec) =>
+        ` · <span style="color:#f5b942">전설 ${leg.toFixed(legDec)}%</span>` +
+        ` · <span style="color:#ff5e97">신화 ${myth.toFixed(mythDec)}%</span>`;
+      const eqArr = [cl.r[0] / sum * eRem, cl.r[1] / sum * eRem, cl.r[2] / sum * eRem];
+      const skArr = [cl.r[0] / sum * sRem, cl.r[1] / sum * sRem, cl.r[2] / sum * sRem];
+      const eqTxt = lv >= 10
+        ? `${base3(eqArr)}${high2(eLeg, eMyth, 1, 2)}`
+        : `${base3(eqArr)} <span style="color:var(--sub)">[Lv.10 전설/신화 해금]</span>`;
+      const skTxt = `${base3(skArr)}${high2(sLeg, sMyth, 2, 2)}`;
+      const lbl = 'display:inline-block;width:116px;white-space:nowrap';
+      return `<div style="font-size:.73rem;line-height:1.6;margin-top:3px">` +
+        `<div><b style="${lbl};color:var(--gold)">🗡️🛡️ 장비 상자:</b>${eqTxt}</div>` +
+        `<div><b style="${lbl};color:var(--purple-g)">✨ 스킬 상자:</b>${skTxt}</div>` +
+      `</div>`;
+    })()}</div>`,
     chestRow(2, '🗡️ 검 상자 열기', 'var(--gold)', 'sword', sellSub),
     chestRow(3, '🛡️ 방어구 상자 열기', 'var(--cyan)', 'armor', sellSub),
     chestRow(4, `✨ 스킬 상자 열기 (총 ${SKILLS.length}종)`, 'var(--purple-g)', 'skill', '낮은 등급 스킬 대폭 상향 패치 · 전설/신화 희귀 등장'),
@@ -1989,6 +2011,7 @@ function equipCostume(type, id) {
   if (type === 'auras') S.hero.costumes.aura = id;
   if (type === 'circles') S.hero.costumes.circle = id;
   save(); refreshAll();
+  heroViews.forEach(v => v.draw());
   refreshModal('costumes', COSTUME_T, costumesHtml());
 }
 
@@ -2296,6 +2319,13 @@ function startRaidBattle(bossId) {
     bossArmor: `${b.name}의 각인`,
   };
   switchScene('scene-battle');
+
+  $('enemy-actor').classList.toggle('boss', true);
+  $('enemy-actor').classList.remove('dead');
+  $('enemy-actor').style.opacity = '';
+  drawBattleBackdrop($('battle-bg'), 50);
+  drawMonster($('monster-battle-canvas'), S.battle.monster.type, true);
+
   if ($('raid-timer-banner')) {
     $('raid-timer-banner').style.display = 'block';
     $('raid-turns-left').textContent = '15';
