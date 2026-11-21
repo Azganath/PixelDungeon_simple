@@ -206,7 +206,7 @@ button, select, input { font-family: var(--font); color: var(--text); }
 .hammer.tap { animation: tap .11s steps(2); }
 @keyframes tap { 0% { transform: translate(10px,-16px) rotate(-50deg); } 60% { transform: translate(-26px,52px) rotate(30deg) scale(1.15); } }
 .altar > *:not(.bg):not(.fx):not(.hammer) { position: relative; z-index: 10; }
-.magic-circle { width: 144px; height: 144px; border-radius: 50%; border: 3px dashed var(--purple); box-shadow: 0 0 18px rgba(165,94,234,.5), inset 0 0 18px rgba(165,94,234,.35); background: radial-gradient(circle, rgba(165,94,234,.18), transparent 70%); display: flex; align-items: center; justify-content: center; margin-top: 30px; }
+.magic-circle { width: 144px; height: 144px; border-radius: 50%; border: 3px dashed var(--purple); box-shadow: 0 0 18px rgba(165,94,234,.5), inset 0 0 18px rgba(165,94,234,.35); background: radial-gradient(circle, rgba(165,94,234,.18), transparent 70%); display: flex; align-items: center; justify-content: center; margin-top: 38px; }
 .magic-circle canvas { width: 96px; height: 96px; filter: drop-shadow(0 0 6px rgba(245,185,66,.8)); animation: float 2s steps(4) infinite; }
 .forge-title { font-size: 1.05rem; font-weight: bold; text-shadow: 2px 2px 0 #000; text-align: center; }
 .star-badge { border: 2px solid var(--gold); background: rgba(0,0,0,.6); padding: 4px 10px; font-size: .75rem; color: var(--gold-b); }

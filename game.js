@@ -1535,7 +1535,7 @@ function fxForgeTap() { const a = forgeAnchor(); FX.spawn(FFX, 'anvilSparks', { 
 function fxForgeSuccess(auto) {
   const a = forgeAnchor();
   FX.spawn(FFX, 'heal', { x: a.x, y: a.y + 30, light: 0.8 }, { speed: 1.4 });
-  if (!auto) FX.spawn(FFX, 'levelUp', { x: a.x, y: a.y + 10, text: 'SUCCESS!', light: 0.7 }, { speed: 1.5, cut: 1.6 });
+  if (!auto) FX.spawn(FFX, 'levelUp', { x: a.x, y: a.y + 65, text: 'SUCCESS!', light: 0.7 }, { speed: 1.5, cut: 1.6 });
 }
 function fxForgeFail(auto) { const a = forgeAnchor(); FX.spawn(FFX, 'poof', { x: a.x, y: a.y + 20 }, { speed: auto ? 1.6 : 1.1 }); }
 function fxChest(canvasId, grade, sold, multi) {
