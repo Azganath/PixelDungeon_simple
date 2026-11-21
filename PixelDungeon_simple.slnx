@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="PixelDungeon_simple/PixelDungeon_simple.vcxproj" Id="1ebf2863-65f6-4c1e-a41d-7abaf526d7ff" />
+</Solution>

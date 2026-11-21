@@ -1,0 +1,2909 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PIXEL DUNGEON 16-BIT</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css">
+    <style>
+        :root {
+            --bg-void: #07080d;
+            --stone-dark: #151720;
+            --stone-mid: #232634;
+            --stone-light: #383d52;
+            --iron-edge: #626982;
+            --iron-highlight: #8d95b5;
+            --gold: #f5b942;
+            --orange-glow: #ff8c24;
+            --cyan: #4deeea;
+            --red: #e93848;
+            --green: #2ed573;
+            --purple: #a55eea;
+            --text-main: #f4efe6;
+            --text-sub: #9ea4b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            font-family: 'Galmuri11', 'Galmuri9', 'Courier New', monospace;
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 10%, #1a1e2e 0%, #06070b 85%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+        }
+
+        /* 16비트 석조 & 철제 베벨 프레임 */
+        .pixel-frame {
+            background: var(--stone-dark);
+            border: 4px solid var(--iron-edge);
+            box-shadow:
+                inset 0 0 0 3px #0b0c12,
+                inset 3px 3px 0 3px #2d3142,
+                0 10px 28px rgba(0, 0, 0, 0.9);
+        }
+
+        .pixel-btn {
+            background: linear-gradient(180deg, #3b4054 0%, #202330 100%);
+            border: 3px solid var(--iron-edge);
+            box-shadow:
+                inset 2px 2px 0 var(--iron-highlight),
+                inset -2px -2px 0 #10121a,
+                0 4px 0 #090a0f;
+            color: var(--text-main);
+            font-weight: bold;
+            cursor: pointer;
+            padding: 10px 14px;
+            text-shadow: 2px 2px 0 #000;
+            transition: transform 0.06s steps(2), filter 0.1s;
+        }
+
+        .pixel-btn:hover:not(:disabled) {
+            filter: brightness(1.22);
+            border-color: var(--gold);
+        }
+
+        .pixel-btn:active:not(:disabled) {
+            transform: translateY(3px);
+            box-shadow: inset 2px 2px 0 #14161f, 0 1px 0 #090a0f;
+        }
+
+        .pixel-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .pixel-btn.orange-btn {
+            background: linear-gradient(180deg, #e07a22 0%, #8f3d0e 100%);
+            border-color: #ffcf6e;
+            box-shadow:
+                inset 2px 2px 0 #ffe6a3,
+                inset -2px -2px 0 #4f1d04,
+                0 4px 0 #260d02;
+            color: #fff9eb;
+        }
+
+        /* =========================================================
+           1. 메인 시작 화면 (1번째 이미지 16비트 던전 계단 씬)
+           ========================================================= */
+        #start-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 28px 16px;
+            background: #07080d;
+            overflow: hidden;
+        }
+
+        #start-bg-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        .start-vignette {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(6, 8, 14, 0.55) 0%, rgba(6, 8, 14, 0.1) 45%, rgba(6, 8, 14, 0.78) 100%);
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .start-header {
+            position: relative;
+            z-index: 3;
+            text-align: center;
+            margin-top: 2vh;
+            animation: pixelFloat 2.4s steps(4) infinite;
+        }
+
+        @keyframes pixelFloat {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-6px);
+            }
+        }
+
+        .start-title {
+            font-size: clamp(2rem, 5.5vw, 3.6rem);
+            font-weight: bold;
+            letter-spacing: 4px;
+            color: #ffcf5c;
+            text-shadow:
+                0 4px 0 #8f4714,
+                0 8px 0 #2b1204,
+                0 0 20px rgba(255, 166, 0, 0.65);
+        }
+
+        .start-badge {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 6px 14px;
+            background: rgba(13, 15, 23, 0.88);
+            border: 3px solid var(--iron-edge);
+            color: var(--cyan);
+            font-size: 0.85rem;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .start-actions {
+            position: relative;
+            z-index: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            max-width: 310px;
+            margin-bottom: 3vh;
+        }
+
+        /* =========================================================
+           메인 게임 레이아웃 & 상단 16비트 탭
+           ========================================================= */
+        .app-shell {
+            width: 100%;
+            max-width: 940px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .top-tabs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .tab-btn {
+            padding: 10px 8px;
+            font-size: 0.92rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(180deg, #525975 0%, #2a2e40 100%);
+            border-color: var(--orange-glow);
+            box-shadow:
+                inset 0 0 0 2px #ffb84d,
+                0 4px 0 #090a0f;
+            color: #ffcf5c;
+        }
+
+        .screen-view {
+            display: none;
+        }
+
+        .screen-view.active {
+            display: block;
+        }
+
+        /* =========================================================
+           2. 전투 화면 (2번째 이미지 석조 UI + 아치 복도 구도)
+           ========================================================= */
+        .battle-cabinet {
+            background: #222530;
+            border: 5px solid #4d5266;
+            box-shadow:
+                inset 0 0 0 4px #0d0e14,
+                0 12px 32px rgba(0, 0, 0, 0.92);
+        }
+
+        /* 상단 석조 HUD (좌측 하트+체력바 / 우측 정보 플레이트) */
+        .battle-hud-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            background: linear-gradient(180deg, #323645 0%, #1d2029 100%);
+            border-bottom: 5px solid #0d0e14;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .hud-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 230px;
+        }
+
+        .hud-heart-icon {
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+            filter: drop-shadow(0 3px 0 #000);
+        }
+
+        .hud-hp-plate {
+            flex: 1;
+            max-width: 270px;
+            height: 32px;
+            background: #101117;
+            border: 4px solid #6b7287;
+            box-shadow: inset 0 0 0 2px #000;
+            position: relative;
+            padding: 2px;
+        }
+
+        .hud-hp-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(180deg, #ff6370 0%, #cf1f34 55%, #870f1d 100%);
+            transition: width 0.2s steps(10);
+        }
+
+        .hud-hp-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .hud-right-plate {
+            background: #101117;
+            border: 4px solid #6b7287;
+            box-shadow: inset 0 0 0 2px #000;
+            padding: 6px 14px;
+            display: flex;
+            gap: 14px;
+            font-size: 0.88rem;
+            font-weight: bold;
+        }
+
+        /* 중앙 던전 전투 스테이지 */
+        .battle-viewport {
+            position: relative;
+            width: 100%;
+            height: 330px;
+            background: #121518;
+            overflow: hidden;
+            border-bottom: 5px solid #0d0e14;
+        }
+
+        #battle-bg-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .stage-pill {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(12, 14, 22, 0.9);
+            border: 3px solid var(--iron-edge);
+            padding: 4px 14px;
+            font-size: 0.82rem;
+            color: var(--gold);
+            font-weight: bold;
+            z-index: 6;
+            white-space: nowrap;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .fighter-box {
+            position: absolute;
+            bottom: 28px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 5;
+        }
+
+        .fighter-box.hero-pos {
+            left: 20%;
+        }
+
+        .fighter-box.enemy-pos {
+            right: 20%;
+        }
+
+        .fighter-tag {
+            background: rgba(11, 13, 20, 0.92);
+            border: 2px solid #6b7287;
+            padding: 3px 6px;
+            margin-bottom: 4px;
+            min-width: 124px;
+            text-align: center;
+        }
+
+        .fighter-name {
+            font-size: 0.72rem;
+            font-weight: bold;
+            margin-bottom: 2px;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .mini-hp-track {
+            width: 100%;
+            height: 7px;
+            background: #2b1015;
+            border: 1px solid #000;
+        }
+
+        .mini-hp-bar {
+            height: 100%;
+            width: 100%;
+            background: #ff4757;
+            transition: width 0.18s steps(8);
+        }
+
+        .fighter-sprite {
+            width: 120px;
+            height: 156px;
+            filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.8));
+            animation: idleBob 1.2s steps(2) infinite;
+        }
+
+        @keyframes idleBob {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-3px);
+            }
+        }
+
+        .anim-lunge-right {
+            animation: lungeRight 0.24s steps(4) !important;
+        }
+
+        @keyframes lungeRight {
+            0% {
+                transform: translateX(0);
+            }
+
+            50% {
+                transform: translateX(52px);
+            }
+
+            100% {
+                transform: translateX(0);
+            }
+        }
+
+        .anim-lunge-left {
+            animation: lungeLeft 0.24s steps(4) !important;
+        }
+
+        @keyframes lungeLeft {
+            0% {
+                transform: translateX(0);
+            }
+
+            50% {
+                transform: translateX(-52px);
+            }
+
+            100% {
+                transform: translateX(0);
+            }
+        }
+
+        .anim-hit {
+            animation: hitBlink 0.24s steps(3) !important;
+        }
+
+        @keyframes hitBlink {
+
+            0%,
+            100% {
+                filter: drop-shadow(0 6px 0 #000);
+                transform: translateX(0);
+            }
+
+            33% {
+                filter: brightness(3) sepia(1) hue-rotate(-50deg) saturate(6);
+                transform: translateX(8px);
+            }
+
+            66% {
+                filter: brightness(0.5);
+                transform: translateX(-6px);
+            }
+        }
+
+        .dmg-popup {
+            position: absolute;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+            pointer-events: none;
+            z-index: 20;
+            animation: dmgRise 0.7s steps(8) forwards;
+        }
+
+        @keyframes dmgRise {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1.15);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translateY(-44px) scale(0.95);
+            }
+        }
+
+        /* 하단 8칸 석조 액션 툴바 (2번째 이미지 하단 슬롯 재현) */
+        .stone-toolbar {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 8px;
+            padding: 12px;
+            background: linear-gradient(180deg, #2b2f3d 0%, #181a24 100%);
+        }
+
+        .stone-slot {
+            aspect-ratio: 1 / 1;
+            min-height: 64px;
+            background: linear-gradient(180deg, #323747 0%, #1b1e28 100%);
+            border: 3px solid #636a80;
+            box-shadow:
+                inset 2px 2px 0 #4d5469,
+                inset -2px -2px 0 #0e1017,
+                0 3px 0 #090a0f;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            cursor: pointer;
+            padding: 3px;
+            color: var(--text-main);
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .stone-slot:hover:not(:disabled) {
+            border-color: var(--orange-glow);
+            box-shadow:
+                inset 0 0 0 2px #ffbe55,
+                0 0 12px rgba(255, 140, 36, 0.65);
+            transform: translateY(-2px);
+        }
+
+        .stone-slot.hot-slot {
+            border-color: var(--orange-glow);
+            box-shadow:
+                inset 0 0 0 2px #ffbe55,
+                0 0 10px rgba(255, 140, 36, 0.5);
+            background: linear-gradient(180deg, #5c3719 0%, #2e1a0b 100%);
+        }
+
+        .stone-slot:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .slot-canvas {
+            width: 28px;
+            height: 28px;
+        }
+
+        .slot-txt {
+            font-size: 0.66rem;
+            font-weight: bold;
+            line-height: 1.1;
+        }
+
+        .slot-sub {
+            font-size: 0.6rem;
+            color: var(--cyan);
+        }
+
+        /* 하단 모험 로그 */
+        .battle-log-area {
+            background: #0d0f17;
+            border-top: 4px solid #3c4154;
+            padding: 10px 14px;
+        }
+
+        .log-top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 0.8rem;
+            color: var(--gold);
+        }
+
+        .log-box {
+            height: 118px;
+            overflow-y: auto;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .log-highlight {
+            color: var(--gold);
+            font-weight: bold;
+        }
+
+        .log-damage {
+            color: var(--red);
+        }
+
+        .log-heal {
+            color: var(--green);
+        }
+
+        .log-magic {
+            color: var(--cyan);
+            font-weight: bold;
+        }
+
+        .log-legend {
+            color: #ff6b81;
+            font-weight: bold;
+        }
+
+        /* =========================================================
+           3. 캐릭터 정보 화면 (가운데 캐릭터 + 주변 검/방어구/룬)
+           ========================================================= */
+        .char-panel {
+            padding: 16px;
+            background: radial-gradient(circle at 50% 42%, #222638 0%, #10121b 82%);
+        }
+
+        .char-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #3e4357;
+            padding-bottom: 8px;
+            margin-bottom: 14px;
+        }
+
+        .char-center-layout {
+            display: grid;
+            grid-template-columns: 1fr 224px 1fr;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .equip-column {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .gear-card {
+            background: #171a26;
+            border: 3px solid #596078;
+            box-shadow: inset 0 0 0 2px #0b0d14;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .gear-icon-frame {
+            width: 50px;
+            height: 50px;
+            background: #0c0e16;
+            border: 3px solid #454b60;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .gear-meta {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .gear-slot-label {
+            font-size: 0.68rem;
+            color: var(--text-sub);
+        }
+
+        .gear-name {
+            font-size: 0.86rem;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 2px 0;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .gear-stat {
+            font-size: 0.78rem;
+            color: var(--green);
+        }
+
+        /* 중앙 모험가 받침대 */
+        .hero-pedestal-box {
+            background: radial-gradient(circle at 50% 55%, rgba(165, 94, 234, 0.25), transparent 72%);
+            border: 3px solid #525973;
+            box-shadow: inset 0 0 0 2px #0b0d14;
+            padding: 12px 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hero-front-sprite {
+            width: 128px;
+            height: 176px;
+            filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.85));
+            animation: idleBob 1.4s steps(2) infinite;
+        }
+
+        .stone-base-step {
+            width: 144px;
+            height: 16px;
+            background: linear-gradient(180deg, #4b5169 0%, #262a38 100%);
+            border: 3px solid #747d9c;
+            margin-top: -6px;
+        }
+
+        .hero-stat-trio {
+            width: 100%;
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            text-align: center;
+        }
+
+        .stat-cell {
+            background: #0d0f17;
+            border: 2px solid #454b60;
+            padding: 4px 2px;
+            font-size: 0.74rem;
+        }
+
+        /* 룬 & 세트 구역 */
+        .rune-section {
+            margin-top: 14px;
+            background: #131621;
+            border: 3px solid #596078;
+            box-shadow: inset 0 0 0 2px #0b0d14;
+            padding: 12px;
+        }
+
+        .rune-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .rune-card {
+            background: #1c2030;
+            border: 2px solid var(--purple);
+            padding: 6px 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.76rem;
+        }
+
+        .set-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 2px dashed #363c52;
+            font-size: 0.75rem;
+        }
+
+        .set-pill {
+            padding: 4px 10px;
+            background: #0d0f17;
+            border: 2px solid #454b60;
+            color: var(--text-sub);
+        }
+
+        .set-pill.on {
+            border-color: var(--gold);
+            color: var(--gold);
+            box-shadow: 0 0 8px rgba(245, 185, 66, 0.35);
+        }
+
+        /* =========================================================
+           4. 대장간 강화 화면 (3번째 이미지 모루 + 3단 바 + 망치/빛/폭발)
+           ========================================================= */
+        .forge-viewport {
+            position: relative;
+            width: 100%;
+            min-height: 460px;
+            background: #13111c;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        #forge-bg-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        .forge-viewport.shake-now {
+            animation: forgeShake 0.4s steps(4);
+        }
+
+        @keyframes forgeShake {
+
+            0%,
+            100% {
+                transform: translate(0, 0);
+            }
+
+            25% {
+                transform: translate(-10px, 6px);
+            }
+
+            50% {
+                transform: translate(10px, -6px);
+            }
+
+            75% {
+                transform: translate(-8px, -4px);
+            }
+        }
+
+        /* 상단 석조 명판 + 3단 게이지 바 (3번째 이미지 구도) */
+        .forge-top-hud {
+            position: relative;
+            z-index: 6;
+            width: 100%;
+            max-width: 440px;
+            background: linear-gradient(180deg, #343847 0%, #1d202b 100%);
+            border: 4px solid #6c7287;
+            box-shadow: inset 0 0 0 3px #0e1017, 0 6px 16px rgba(0, 0, 0, 0.85);
+            padding: 10px 14px;
+            text-align: center;
+        }
+
+        .forge-item-title {
+            font-size: 1.05rem;
+            font-weight: bold;
+            color: var(--gold);
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .forge-item-desc {
+            font-size: 0.78rem;
+            color: var(--text-sub);
+            margin-top: 3px;
+        }
+
+        .forge-three-bars {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .f-bar-track {
+            height: 15px;
+            background: #11121a;
+            border: 3px solid #595f73;
+            position: relative;
+            padding: 1px;
+        }
+
+        .f-bar-fill {
+            height: 100%;
+            transition: width 0.2s steps(10);
+        }
+
+        .f-bar-label {
+            position: absolute;
+            inset: 0;
+            font-size: 0.66rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        /* 우측 세로 슬롯 (3번째 이미지 우측 4칸) */
+        .forge-side-rack {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 8;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .forge-rack-slot {
+            width: 58px;
+            height: 58px;
+            padding: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            gap: 2px;
+        }
+
+        .forge-rack-slot.selected {
+            border-color: var(--orange-glow);
+            box-shadow: inset 0 0 0 2px #ffcf6e, 0 0 10px rgba(255, 140, 36, 0.6);
+            color: var(--gold);
+        }
+
+        /* 중앙 모루 위 장비 + 망치 + 성공 빛 / 실패 폭발 캔버스 */
+        .anvil-center-stage {
+            position: relative;
+            z-index: 6;
+            width: 280px;
+            height: 185px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .anvil-equip-sprite {
+            width: 112px;
+            height: 112px;
+            margin-top: 16px;
+            filter: drop-shadow(0 0 14px rgba(165, 94, 234, 0.9));
+            animation: pixelFloat 1.8s steps(3) infinite;
+            z-index: 7;
+        }
+
+        .forge-hammer-sprite {
+            position: absolute;
+            top: -8px;
+            right: 26px;
+            width: 88px;
+            height: 88px;
+            opacity: 0;
+            transform-origin: bottom right;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        .forge-hammer-sprite.striking {
+            animation: hammerSmash 0.42s steps(6) forwards;
+        }
+
+        @keyframes hammerSmash {
+            0% {
+                opacity: 1;
+                transform: rotate(35deg) translate(16px, -24px);
+            }
+
+            45% {
+                opacity: 1;
+                transform: rotate(-55deg) translate(-34px, 34px);
+            }
+
+            80% {
+                opacity: 1;
+                transform: rotate(-45deg) translate(-28px, 28px);
+            }
+
+            100% {
+                opacity: 0;
+                transform: rotate(0deg);
+            }
+        }
+
+        /* 성공 빛기둥 이펙트 */
+        .fx-light-burst {
+            position: absolute;
+            inset: -45px;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 12;
+            background:
+                radial-gradient(circle, rgba(255, 250, 190, 0.96) 0%, rgba(245, 185, 66, 0.7) 32%, rgba(165, 94, 234, 0.35) 58%, transparent 76%);
+        }
+
+        .fx-light-burst.active {
+            animation: lightBurstAnim 0.85s steps(8) forwards;
+        }
+
+        @keyframes lightBurstAnim {
+            0% {
+                opacity: 0;
+                transform: scale(0.35);
+            }
+
+            30% {
+                opacity: 1;
+                transform: scale(1.25);
+            }
+
+            70% {
+                opacity: 0.85;
+                transform: scale(1.45);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.65);
+            }
+        }
+
+        /* 실패 폭발 & 연기 이펙트 */
+        .fx-explosion-burst {
+            position: absolute;
+            inset: -35px;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 14;
+            background:
+                radial-gradient(circle, #fff7b2 0%, #ff6b2b 28%, #d61c32 54%, #1f1b24 76%, transparent 88%);
+        }
+
+        .fx-explosion-burst.active {
+            animation: boomBurstAnim 0.8s steps(7) forwards;
+        }
+
+        @keyframes boomBurstAnim {
+            0% {
+                opacity: 1;
+                transform: scale(0.3);
+            }
+
+            30% {
+                opacity: 1;
+                transform: scale(1.35);
+            }
+
+            65% {
+                opacity: 0.9;
+                transform: scale(1.55);
+                filter: brightness(0.55);
+            }
+
+            100% {
+                opacity: 0;
+                transform: scale(1.75);
+            }
+        }
+
+        .forge-toast {
+            position: absolute;
+            top: 38%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 7px 16px;
+            font-size: 0.98rem;
+            font-weight: bold;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .forge-toast.show-ok {
+            background: rgba(34, 24, 6, 0.94);
+            border: 3px solid #ffd452;
+            color: #ffea8f;
+            animation: toastRise 0.95s steps(8) forwards;
+        }
+
+        .forge-toast.show-no {
+            background: rgba(42, 8, 12, 0.94);
+            border: 3px solid #ff4757;
+            color: #ff8f99;
+            animation: toastRise 0.95s steps(8) forwards;
+        }
+
+        @keyframes toastRise {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -25%);
+            }
+
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -55%);
+            }
+
+            80% {
+                opacity: 1;
+                transform: translate(-50%, -65%);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -80%);
+            }
+        }
+
+        /* 하단 룬 버튼 2개 (3번째 이미지 하단 주황/회색 룬 패드) */
+        .forge-bottom-pads {
+            position: relative;
+            z-index: 8;
+            display: flex;
+            gap: 12px;
+            width: 100%;
+            max-width: 440px;
+        }
+
+        .forge-bottom-pads button {
+            flex: 1;
+            padding: 12px 10px;
+            font-size: 0.9rem;
+        }
+
+        /* =========================================================
+           팝업 모달
+           ========================================================= */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.82);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 500;
+            padding: 14px;
+        }
+
+        .modal-card {
+            width: 100%;
+            max-width: 450px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #3c4154;
+            padding-bottom: 8px;
+            color: var(--gold);
+            font-weight: bold;
+        }
+
+        .grade-일반 {
+            color: #d1d5db;
+        }
+
+        .grade-희귀 {
+            color: #60a5fa;
+        }
+
+        .grade-영웅 {
+            color: #c084fc;
+        }
+
+        .grade-전설 {
+            color: #fbbf24;
+        }
+
+        .grade-신화 {
+            color: #ff4757;
+            font-weight: bold;
+        }
+
+        .grade-보스전용 {
+            color: #ff6b81;
+            font-weight: bold;
+        }
+
+        @media (max-width: 720px) {
+            .stone-toolbar {
+                grid-template-columns: repeat(4, 1fr);
+            }
+
+            .char-center-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .fighter-box.hero-pos {
+                left: 8%;
+            }
+
+            .fighter-box.enemy-pos {
+                right: 8%;
+            }
+
+            .forge-side-rack {
+                position: static;
+                transform: none;
+                flex-direction: row;
+                margin: 4px 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- =========================================================
+         1. 메인 시작 화면 (1번째 이미지 16비트 던전 계단 씬)
+         ========================================================= -->
+    <section id="start-screen">
+        <canvas id="start-bg-canvas" width="320" height="180"></canvas>
+        <div class="start-vignette"></div>
+
+        <div class="start-header">
+            <div class="start-title">PIXEL DUNGEON</div>
+            <div class="start-badge">16-BIT DUNGEON CRAWLER</div>
+        </div>
+
+        <div class="start-actions">
+            <button class="pixel-btn orange-btn" style="font-size:1.1rem; padding:14px;" onclick="enterGameFromTitle()">
+                ⚔️ 던전 모험 시작
+            </button>
+            <button class="pixel-btn" style="font-size:0.85rem;" onclick="resetSaveData()">
+                🔄 데이터 초기화 (새 게임)
+            </button>
+        </div>
+    </section>
+
+    <!-- =========================================================
+         메인 게임 화면 컨테이너
+         ========================================================= -->
+    <div class="app-shell">
+        <nav class="top-tabs">
+            <button class="pixel-btn tab-btn active" id="tab-battle" onclick="switchView('battle')">
+                ⚔️ 던전 전투
+            </button>
+            <button class="pixel-btn tab-btn" id="tab-character" onclick="switchView('character')">
+                🛡️ 캐릭터 정보
+            </button>
+            <button class="pixel-btn tab-btn" id="tab-forge" onclick="switchView('forge')">
+                🔨 대장간 강화
+            </button>
+        </nav>
+
+        <!-- =========================================================
+             2. 전투 화면 (2번째 이미지 구도)
+             ========================================================= -->
+        <main id="view-battle" class="screen-view active">
+            <div class="battle-cabinet">
+                <!-- 상단 석조 HUD -->
+                <div class="battle-hud-bar">
+                    <div class="hud-left">
+                        <canvas id="heart-canvas" class="hud-heart-icon" width="16" height="16"></canvas>
+                        <div class="hud-hp-plate">
+                            <div class="hud-hp-fill" id="ui-hp-bar"></div>
+                            <div class="hud-hp-text" id="ui-hp-num">100 / 100</div>
+                        </div>
+                    </div>
+
+                    <div class="hud-right-plate">
+                        <span style="color:var(--cyan);">🏰 <b id="ui-stage">Stage 1</b></span>
+                        <span style="color:var(--gold);">🪙 <b id="ui-gold">300</b>G</span>
+                        <span style="color:#70a1ff;">🗝️ <b id="ui-keys">2</b></span>
+                    </div>
+                </div>
+
+                <!-- 중앙 던전 아치 복도 & 전투 캐릭터 -->
+                <div class="battle-viewport" id="battle-arena">
+                    <canvas id="battle-bg-canvas" width="320" height="180"></canvas>
+                    <div class="stage-pill" id="arena-stage-banner">STAGE 1 - 지하 던전 복도</div>
+
+                    <!-- 좌측: 측면 후드 모험가 -->
+                    <div class="fighter-box hero-pos" id="hero-combatant">
+                        <div class="fighter-tag" style="border-color:var(--cyan);">
+                            <div class="fighter-name" style="color:var(--cyan);">모험가 (공<span
+                                    id="arena-atk">10</span>/방<span id="arena-def">3</span>)</div>
+                        </div>
+                        <canvas id="hero-battle-canvas" class="fighter-sprite" width="32" height="42"></canvas>
+                    </div>
+
+                    <!-- 우측: 스테이지 몬스터 -->
+                    <div class="fighter-box enemy-pos" id="enemy-combatant">
+                        <div class="fighter-tag">
+                            <div class="fighter-name" id="enemy-name-tag" style="color:#ffcf5c;">던전 해골</div>
+                            <div class="mini-hp-track">
+                                <div class="mini-hp-bar" id="enemy-hp-fill"></div>
+                            </div>
+                        </div>
+                        <canvas id="enemy-battle-canvas" class="fighter-sprite" width="32" height="42"></canvas>
+                    </div>
+                </div>
+
+                <!-- 하단 8칸 석조 아이콘 툴바 -->
+                <div class="stone-toolbar">
+                    <button class="stone-slot hot-slot" id="btn-enter" onclick="enterDungeon()">
+                        <canvas id="slot-ic-0" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">전투 입장</span>
+                        <span class="slot-sub">진행</span>
+                    </button>
+                    <button class="stone-slot" onclick="openChest('sword')">
+                        <canvas id="slot-ic-1" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">검 상자</span>
+                        <span class="slot-sub">🗝️1</span>
+                    </button>
+                    <button class="stone-slot" onclick="openChest('armor')">
+                        <canvas id="slot-ic-2" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">갑옷 상자</span>
+                        <span class="slot-sub">🗝️1</span>
+                    </button>
+                    <button class="stone-slot" onclick="openChest('skill')">
+                        <canvas id="slot-ic-3" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">스킬 상자</span>
+                        <span class="slot-sub">🗝️1</span>
+                    </button>
+                    <button class="stone-slot" onclick="switchView('character')">
+                        <canvas id="slot-ic-4" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">장비&amp;룬</span>
+                        <span class="slot-sub" id="ui-rune-count">0개</span>
+                    </button>
+                    <button class="stone-slot" onclick="openSkillModal()">
+                        <canvas id="slot-ic-5" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">스킬 관리</span>
+                        <span class="slot-sub" id="ui-skill-count">0개</span>
+                    </button>
+                    <button class="stone-slot" onclick="switchView('forge')">
+                        <canvas id="slot-ic-6" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">대장간</span>
+                        <span class="slot-sub">강화</span>
+                    </button>
+                    <button class="stone-slot" onclick="openSpeedModal()">
+                        <canvas id="slot-ic-7" class="slot-canvas" width="16" height="16"></canvas>
+                        <span class="slot-txt">배속 설정</span>
+                        <span class="slot-sub" id="ui-speed-lock">🔒10층</span>
+                    </button>
+                </div>
+
+                <!-- 모험 로그 -->
+                <div class="battle-log-area">
+                    <div class="log-top-row">
+                        <span>📜 모험 및 전투 일지</span>
+                        <button class="pixel-btn" style="padding:2px 8px; font-size:0.7rem;"
+                            onclick="clearLog()">지우기</button>
+                    </div>
+                    <div class="log-box" id="ui-log-box">
+                        <div class="log-line log-highlight">🗡️ 16-BIT PIXEL DUNGEON에 오신 것을 환영합니다!</div>
+                        <div class="log-line">하단 툴바의 [전투 입장]을 눌러 던전을 탐험하세요.</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- =========================================================
+             3. 캐릭터 정보 화면 (중앙 정면 모험가 + 주변 검/방어구/룬)
+             ========================================================= -->
+        <section id="view-character" class="screen-view">
+            <div class="pixel-frame char-panel">
+                <div class="char-header">
+                    <span style="color:var(--gold); font-weight:bold;">🛡️ 캐릭터 장비 &amp; 고대 룬</span>
+                    <span style="font-size:0.82rem; color:var(--cyan);">Stage <b id="char-stage-num">1</b> 모험가</span>
+                </div>
+
+                <div class="char-center-layout">
+                    <!-- 좌측: 일반 검 & 보스 전용 검 -->
+                    <div class="equip-column">
+                        <div class="gear-card">
+                            <div class="gear-icon-frame">
+                                <canvas id="icon-sword" width="32" height="32"></canvas>
+                            </div>
+                            <div class="gear-meta">
+                                <div class="gear-slot-label">주무기 (일반 검)</div>
+                                <div class="gear-name" id="ui-sword-name">나무 검</div>
+                                <div class="gear-stat" id="ui-sword-stat">+0 (+0강)</div>
+                            </div>
+                        </div>
+
+                        <div class="gear-card">
+                            <div class="gear-icon-frame">
+                                <canvas id="icon-boss-sword" width="32" height="32"></canvas>
+                            </div>
+                            <div class="gear-meta">
+                                <div class="gear-slot-label">유물 무기 (보스 검)</div>
+                                <div class="gear-name" id="ui-boss-sword-name">없음</div>
+                                <div class="gear-stat" id="ui-boss-sword-stat">+0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 가운데: 4번째 이미지 정면 모험가 -->
+                    <div class="hero-pedestal-box">
+                        <canvas id="hero-front-canvas" class="hero-front-sprite" width="32" height="44"></canvas>
+                        <div class="stone-base-step"></div>
+                        <div class="hero-stat-trio">
+                            <div class="stat-cell">
+                                <div style="color:var(--red); font-size:0.65rem;">HP</div>
+                                <b id="char-hp-val">100</b>
+                            </div>
+                            <div class="stat-cell">
+                                <div style="color:var(--gold); font-size:0.65rem;">ATK</div>
+                                <b id="ui-atk">10</b>
+                            </div>
+                            <div class="stat-cell">
+                                <div style="color:var(--cyan); font-size:0.65rem;">DEF</div>
+                                <b id="ui-def">3</b>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 우측: 일반 갑옷 & 보스 전용 갑옷 -->
+                    <div class="equip-column">
+                        <div class="gear-card">
+                            <div class="gear-icon-frame">
+                                <canvas id="icon-armor" width="32" height="32"></canvas>
+                            </div>
+                            <div class="gear-meta">
+                                <div class="gear-slot-label">방어구 (일반 갑옷)</div>
+                                <div class="gear-name" id="ui-armor-name">낡은 갑옷</div>
+                                <div class="gear-stat" id="ui-armor-stat">+0 (+0강)</div>
+                            </div>
+                        </div>
+
+                        <div class="gear-card">
+                            <div class="gear-icon-frame">
+                                <canvas id="icon-boss-armor" width="32" height="32"></canvas>
+                            </div>
+                            <div class="gear-meta">
+                                <div class="gear-slot-label">유물 방어구 (보스 갑옷)</div>
+                                <div class="gear-name" id="ui-boss-armor-name">없음</div>
+                                <div class="gear-stat" id="ui-boss-armor-stat">+0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 하단 장착 룬 & 세트 효과 -->
+                <div class="rune-section">
+                    <div style="font-size:0.86rem; font-weight:bold; color:var(--purple);">🔮 장착된 고대 룬 &amp; 세트 효과</div>
+                    <div class="rune-grid" id="char-rune-list">
+                        <div style="color:var(--text-sub); font-size:0.78rem;">보유한 룬이 없습니다. (5층 단위 엘리트 처치 시 드롭)</div>
+                    </div>
+                    <div class="set-row">
+                        <span class="set-pill" id="badge-set-normal">일반 룬 세트 (미완성)</span>
+                        <span class="set-pill" id="badge-set-rare">희귀 룬 세트 (미완성)</span>
+                        <span class="set-pill" id="badge-set-hero">영웅 룬 세트 (미완성)</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =========================================================
+             4. 대장간 강화 화면 (3번째 이미지 모루 + 3단 바 + 망치/빛/폭발)
+             ========================================================= -->
+        <section id="view-forge" class="screen-view">
+            <div class="pixel-frame forge-viewport" id="forge-stage">
+                <canvas id="forge-bg-canvas" width="320" height="180"></canvas>
+
+                <!-- 상단 석조 명판 & 3단 게이지 바 -->
+                <div class="forge-top-hud">
+                    <div class="forge-item-title" id="forge-title">🗡️ 나무 검 (+0강)</div>
+                    <div class="forge-item-desc" id="forge-sub">성공 확률: 100% | 비용: 100G | 보유: 300G</div>
+
+                    <div class="forge-three-bars">
+                        <div class="f-bar-track">
+                            <div class="f-bar-fill" id="forge-bar-lv" style="width:0%; background:#a4b0be;"></div>
+                            <div class="f-bar-label" id="forge-bar-lv-txt">강화 단계: +0 / +10</div>
+                        </div>
+                        <div class="f-bar-track">
+                            <div class="f-bar-fill" id="forge-bar-rate"
+                                style="width:100%; background:linear-gradient(90deg,#ff6b2b,#ffbe3b);"></div>
+                            <div class="f-bar-label" id="forge-bar-rate-txt">성공 확률: 100%</div>
+                        </div>
+                        <div class="f-bar-track">
+                            <div class="f-bar-fill" id="forge-bar-gold"
+                                style="width:100%; background:linear-gradient(90deg,#2ed573,#7bed9f);"></div>
+                            <div class="f-bar-label" id="forge-bar-gold-txt">보유 골드: 300 G</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 우측 장비 선택 슬롯 -->
+                <div class="forge-side-rack">
+                    <button class="pixel-btn forge-rack-slot selected" id="forge-sel-sword"
+                        onclick="selectForgeTarget('sword')">
+                        <canvas id="rack-ic-sword" width="24" height="24"></canvas>
+                        <span>검 선택</span>
+                    </button>
+                    <button class="pixel-btn forge-rack-slot" id="forge-sel-armor" onclick="selectForgeTarget('armor')">
+                        <canvas id="rack-ic-armor" width="24" height="24"></canvas>
+                        <span>갑옷 선택</span>
+                    </button>
+                    <button class="pixel-btn forge-rack-slot" onclick="switchView('battle')">
+                        <canvas id="rack-ic-back" width="24" height="24"></canvas>
+                        <span>전투 복귀</span>
+                    </button>
+                </div>
+
+                <!-- 중앙 모루 위 장비 & 망치/빛/폭발 이펙트 -->
+                <div class="anvil-center-stage">
+                    <div class="fx-light-burst" id="fx-success-light"></div>
+                    <div class="fx-explosion-burst" id="fx-fail-boom"></div>
+                    <canvas id="anvil-item-canvas" class="anvil-equip-sprite" width="32" height="32"></canvas>
+                    <canvas id="forge-hammer-canvas" class="forge-hammer-sprite" width="32" height="32"></canvas>
+                    <div class="forge-toast" id="forge-result-banner"></div>
+                </div>
+
+                <!-- 하단 강화 버튼 2개 -->
+                <div class="forge-bottom-pads">
+                    <button class="pixel-btn orange-btn" id="btn-forge-once" onclick="doUpgradeOnce()">
+                        🔨 1회 강화 (100G)
+                    </button>
+                    <button class="pixel-btn" id="btn-forge-auto" onclick="doAutoUpgrade()">
+                        ⚡ +10강 연속 강화
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- =========================================================
+         스킬 관리 모달
+         ========================================================= -->
+    <div class="modal-overlay" id="modal-skill" onclick="if(event.target===this) closeModal('modal-skill')">
+        <div class="pixel-frame modal-card">
+            <div class="modal-header">
+                <span>📜 보유 스킬 &amp; 시전 설정</span>
+                <button class="pixel-btn" style="padding:2px 8px;" onclick="closeModal('modal-skill')">✕</button>
+            </div>
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; background:#0d0f17; padding:10px; border:2px solid #3c4154;">
+                <span style="font-size:0.82rem;">스킬 시전 방식:</span>
+                <button class="pixel-btn" id="btn-toggle-auto-skill" style="padding:5px 10px; font-size:0.78rem;"
+                    onclick="toggleAutoSkill()">자동 시전 ON</button>
+            </div>
+            <div id="modal-skill-list"
+                style="max-height:230px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         배속 설정 모달
+         ========================================================= -->
+    <div class="modal-overlay" id="modal-speed" onclick="if(event.target===this) closeModal('modal-speed')">
+        <div class="pixel-frame modal-card">
+            <div class="modal-header">
+                <span>⏩ 전투 배속 설정</span>
+                <button class="pixel-btn" style="padding:2px 8px;" onclick="closeModal('modal-speed')">✕</button>
+            </div>
+            <p style="font-size:0.8rem; color:var(--text-sub);">설정한 배속은 다음 전투부터 계속 유지됩니다.</p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <button class="pixel-btn" onclick="setBattleSpeed(1)">1배속 (기본 전투 연출)</button>
+                <button class="pixel-btn" onclick="setBattleSpeed(2)">2배속 (빠른 전투 연출)</button>
+                <button class="pixel-btn orange-btn" onclick="setBattleSpeed(3)">자동 스킵 (즉시 결과 산출)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. 게임 데이터 상태 (원본 C++/웹 로직 유지)
+        // =========================================================================
+        const player = {
+            name: "모험가",
+            hp: 100,
+            maxHp: 100,
+            attack: 10,
+            defense: 3,
+            gold: 300,
+            keys: 2,
+            sword: { name: "나무 검", grade: "일반", bonus: 0, sellPrice: 0, level: 0 },
+            bossSword: { name: "없음", grade: "없음", bonus: 0, sellPrice: 0 },
+            armor: { name: "낡은 갑옷", grade: "일반", bonus: 0, sellPrice: 0, level: 0 },
+            bossArmor: { name: "없음", grade: "없음", bonus: 0, sellPrice: 0 },
+        };
+
+        let stage = 1;
+        let battleSpeed = 1;
+        let autoSkill = true;
+        let isBattling = false;
+        let currentUpgradeType = 'sword';
+        let isForgingAnim = false;
+        let forgeTimers = [];
+
+        const skills = [];
+        const runes = [];
+        const setStatus = { normal: false, rare: false, hero: false };
+
+        // =========================================================================
+        // 2. 16비트 픽셀 아트 엔진 (4장의 레퍼런스 이미지 구도 완벽 재현)
+        // =========================================================================
+        function pxRect(ctx, x, y, w, h, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+        }
+
+        function drawMatrix(ctx, grid, pal, scale = 1, ox = 0, oy = 0) {
+            for (let y = 0; y < grid.length; y++) {
+                const row = grid[y];
+                for (let x = 0; x < row.length; x++) {
+                    const ch = row[x];
+                    if (ch !== '.' && pal[ch]) {
+                        ctx.fillStyle = pal[ch];
+                        ctx.fillRect(ox + x * scale, oy + y * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        // [1번째 이미지 재현] 던전 돌계단 + 횃불 모험가 + 철창 & 초록 버섯 심연
+        function renderStartBackground() {
+            const c = document.getElementById('start-bg-canvas');
+            const ctx = c.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+
+            // 어두운 지하 석벽 배경
+            pxRect(ctx, 0, 0, 320, 180, '#12151e');
+
+            // 원근감 있는 돌계단 & 아치 통로
+            for (let i = 0; i < 11; i++) {
+                const y = 62 + i * 11;
+                const shade = i % 2 === 0 ? '#272c3a' : '#1e222e';
+                pxRect(ctx, 50 - i * 4, y, 220 + i * 8, 10, shade);
+                pxRect(ctx, 50 - i * 4, y, 220 + i * 8, 2, '#3a4154');
+                // 돌계단 틈새
+                for (let bx = 40; bx < 280; bx += 28) {
+                    pxRect(ctx, bx + (i % 2) * 12, y, 2, 10, '#10121a');
+                }
+            }
+
+            // 중앙 상단 어두운 석조 아치 & 철창
+            pxRect(ctx, 118, 18, 84, 62, '#0a0f12');
+            pxRect(ctx, 112, 12, 96, 8, '#2d3342');
+            pxRect(ctx, 112, 18, 8, 62, '#252a38');
+            pxRect(ctx, 200, 18, 8, 62, '#252a38');
+            // 철창 살
+            for (let gx = 128; gx <= 190; gx += 10) {
+                pxRect(ctx, gx, 22, 2, 54, '#363d4d');
+            }
+            pxRect(ctx, 120, 38, 80, 2, '#363d4d');
+            pxRect(ctx, 120, 58, 80, 2, '#363d4d');
+
+            // 철창 너머 초록빛 형광 버섯 & 이끼
+            pxRect(ctx, 146, 66, 8, 4, '#39ff7a');
+            pxRect(ctx, 149, 70, 2, 5, '#b8ffd0');
+            pxRect(ctx, 174, 60, 6, 3, '#2ed573');
+            pxRect(ctx, 176, 63, 2, 4, '#a3ffbe');
+            pxRect(ctx, 212, 68, 10, 4, '#39ff7a');
+            pxRect(ctx, 216, 72, 2, 5, '#b8ffd0');
+            // 좌우 벽면 이끼
+            pxRect(ctx, 34, 30, 14, 24, '#2e5e32');
+            pxRect(ctx, 38, 54, 6, 12, '#3d7a42');
+            pxRect(ctx, 272, 42, 16, 22, '#2e5e32');
+
+            // 우측 벽면 횃불 & 따뜻한 불빛 후광
+            pxRect(ctx, 268, 48, 36, 36, 'rgba(255, 140, 30, 0.14)');
+            pxRect(ctx, 282, 62, 4, 14, '#5e381c');
+            pxRect(ctx, 280, 54, 8, 8, '#ff7b1c');
+            pxRect(ctx, 282, 50, 4, 6, '#ffe066');
+
+            // 계단 위 모험가 실루엣 & 횃불 빛 (1번째 이미지 좌하단 구도)
+            pxRect(ctx, 84, 84, 52, 52, 'rgba(255, 150, 40, 0.16)');
+            const heroStair = [
+                "....OOOOOO....",
+                "...OHHHHHHO...",
+                "..OHHHHHHHHO..",
+                "..OHHHFFFFHO..",
+                ".OOOHHHHHHOOO.",
+                "OLLLLLLLLLLLLO",
+                "OLLLLBBBBLLLLO",
+                "OPLLLBBBBLLLTO",
+                "OPLLLLLLLLLLTO",
+                ".OSSSSSSSSSSO.",
+                "..OSSO..OSSO..",
+                "..OLLOOOOLLO.."
+            ];
+            drawMatrix(ctx, heroStair, {
+                O: '#0b0c10', H: '#352b3d', F: '#120f17',
+                L: '#6e3f23', B: '#e8b343', P: '#a55eea',
+                S: '#251f2b', T: '#ff8c24'
+            }, 2, 86, 98);
+            // 손에 든 횃불 불꽃
+            pxRect(ctx, 114, 96, 6, 8, '#ff7b1c');
+            pxRect(ctx, 116, 93, 3, 5, '#fff078');
+        }
+
+        // [2번째 이미지 재현] 이끼 낀 석조 아치 던전 복도 배경
+        function renderBattleBackground() {
+            const c = document.getElementById('battle-bg-canvas');
+            const ctx = c.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+
+            // 기본 어두운 석벽
+            pxRect(ctx, 0, 0, 320, 180, '#1a1d26');
+
+            // 벽돌 패턴
+            for (let y = 0; y < 126; y += 14) {
+                for (let x = 0; x < 320; x += 28) {
+                    const bx = x + ((y / 14) % 2) * 14;
+                    pxRect(ctx, bx + 1, y + 1, 26, 12, '#242834');
+                    pxRect(ctx, bx + 1, y + 1, 26, 2, '#323747');
+                }
+            }
+
+            // 중앙 깊은 아치형 터널 (2번째 이미지 중앙 녹색 이끼 아치)
+            pxRect(ctx, 108, 22, 104, 106, '#0d1412');
+            pxRect(ctx, 100, 16, 120, 10, '#363b4a');
+            pxRect(ctx, 100, 22, 10, 106, '#2b303d');
+            pxRect(ctx, 210, 22, 10, 106, '#2b303d');
+            // 안쪽 이중 아치
+            pxRect(ctx, 124, 34, 72, 94, '#13241c');
+            pxRect(ctx, 138, 46, 44, 82, '#1b3829');
+            // 아치 상단 & 내부 녹색 이끼 덩굴
+            pxRect(ctx, 114, 26, 92, 6, '#397d3c');
+            pxRect(ctx, 126, 32, 6, 10, '#4ca64f');
+            pxRect(ctx, 154, 32, 8, 12, '#4ca64f');
+            pxRect(ctx, 184, 32, 6, 9, '#397d3c');
+            pxRect(ctx, 130, 112, 12, 8, '#397d3c');
+            pxRect(ctx, 178, 110, 14, 10, '#4ca64f');
+
+            // 좌측 벽면 철창 & 횃불
+            pxRect(ctx, 36, 36, 30, 34, '#0c0e14');
+            for (let gx = 41; gx <= 61; gx += 5) pxRect(ctx, gx, 38, 2, 30, '#484f63');
+            pxRect(ctx, 38, 52, 26, 2, '#484f63');
+
+            // 벽면 횃불 불빛
+            pxRect(ctx, 74, 48, 28, 28, 'rgba(255, 145, 36, 0.16)');
+            pxRect(ctx, 86, 60, 3, 12, '#693d1e');
+            pxRect(ctx, 84, 53, 7, 7, '#ff7b1c');
+            pxRect(ctx, 86, 50, 3, 5, '#ffe66d');
+
+            // 바닥 석판 타일 (원근 타일 + 중앙 따뜻한 횃불 반사광)
+            pxRect(ctx, 0, 126, 320, 54, '#1c1e26');
+            for (let row = 0; row < 4; row++) {
+                const ty = 126 + row * 13;
+                const col = row % 2 === 0 ? '#282b36' : '#21242e';
+                pxRect(ctx, 0, ty + 1, 320, 11, col);
+                pxRect(ctx, 0, ty + 1, 320, 2, '#393e4d');
+                for (let tx = 0; tx < 320; tx += 36) {
+                    pxRect(ctx, tx + row * 9, ty, 2, 13, '#11131a');
+                }
+            }
+            // 바닥 중앙 주황빛 반사광
+            pxRect(ctx, 84, 132, 110, 32, 'rgba(255, 145, 45, 0.12)');
+        }
+
+        // [3번째 이미지 재현] 대장간 보라색 룬 모루 + 수정/광석/송곳니 받침대 배경
+        function renderForgeBackground() {
+            const c = document.getElementById('forge-bg-canvas');
+            const ctx = c.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+
+            // 어두운 보랏빛 지하 대장간 석실
+            pxRect(ctx, 0, 0, 320, 180, '#14121f');
+
+            // 좌우 석조 기둥 & 아치
+            pxRect(ctx, 18, 0, 26, 150, '#232230');
+            pxRect(ctx, 22, 0, 6, 150, '#323042');
+            pxRect(ctx, 276, 0, 26, 150, '#232230');
+            pxRect(ctx, 280, 0, 6, 150, '#323042');
+
+            // 좌우 보라색 룬 현수막 (3번째 이미지 좌우 깃발)
+            pxRect(ctx, 56, 26, 20, 34, '#4b236e');
+            pxRect(ctx, 58, 28, 16, 28, '#653194');
+            pxRect(ctx, 65, 34, 2, 16, '#b77aff');
+            pxRect(ctx, 62, 39, 8, 2, '#b77aff');
+
+            pxRect(ctx, 244, 26, 20, 34, '#4b236e');
+            pxRect(ctx, 246, 28, 16, 28, '#653194');
+            pxRect(ctx, 253, 34, 2, 16, '#b77aff');
+            pxRect(ctx, 250, 39, 8, 2, '#b77aff');
+
+            // 바닥 석조 제단
+            pxRect(ctx, 0, 134, 320, 46, '#232530');
+            pxRect(ctx, 30, 126, 260, 12, '#343747');
+            pxRect(ctx, 30, 126, 260, 2, '#52576e');
+
+            // 중앙 대형 석조 모루 (3번째 이미지 중앙 보라 룬 모루)
+            pxRect(ctx, 114, 124, 92, 12, '#2d303d'); // 모루 하단 받침
+            pxRect(ctx, 126, 108, 68, 16, '#3b3f4f'); // 모루 몸통
+            pxRect(ctx, 106, 98, 108, 10, '#4f5469'); // 모루 상판
+            pxRect(ctx, 106, 98, 108, 2, '#7b829e');  // 상판 하이라이트
+            // 모루 정면 빛나는 보라색 마법진 룬
+            pxRect(ctx, 151, 110, 18, 12, '#7c3aed');
+            pxRect(ctx, 154, 112, 12, 8, '#c084fc');
+            pxRect(ctx, 158, 114, 4, 4, '#f3e8ff');
+
+            // 좌측 받침대: 철광석 (3번째 이미지 좌측 원형 받침)
+            pxRect(ctx, 66, 124, 36, 8, '#383c4a');
+            pxRect(ctx, 76, 114, 16, 10, '#636b7d');
+            pxRect(ctx, 79, 115, 6, 4, '#9aa4ba');
+
+            // 중앙 하단 받침대: 빛나는 초록 수정 (3번째 이미지 중앙 하단 에메랄드 크리스탈)
+            pxRect(ctx, 140, 132, 40, 10, '#383c4a');
+            pxRect(ctx, 154, 116, 12, 18, '#10b981');
+            pxRect(ctx, 156, 112, 8, 6, '#6ee7b7');
+            pxRect(ctx, 158, 118, 3, 10, '#d1fae5');
+
+            // 우측 받침대: 몬스터 송곳니 (3번째 이미지 우측 받침)
+            pxRect(ctx, 218, 124, 36, 8, '#383c4a');
+            pxRect(ctx, 230, 115, 10, 9, '#e6dec8');
+            pxRect(ctx, 235, 110, 6, 6, '#fffdf5');
+        }
+
+        // [4번째 이미지 재현] 정면 & 측면 16비트 픽셀 모험가 (후드, 가죽 갑옷, 금색 벨트, 보라 물약, 검)
+        function renderHeroSprites() {
+            // 1) 정면 캐릭터 (캐릭터 정보창 중앙)
+            const fc = document.getElementById('hero-front-canvas');
+            const fCtx = fc.getContext('2d');
+            fCtx.imageSmoothingEnabled = false;
+            fCtx.clearRect(0, 0, fc.width, fc.height);
+
+            const pal = {
+                O: '#110f17', // 외곽선
+                H: '#3e3347', // 후드 기본
+                D: '#27202e', // 후드 음영
+                M: '#564761', // 후드 하이라이트
+                F: '#141118', // 후드 속 그림자 얼굴
+                L: '#854c29', // 가죽 튜닉
+                T: '#a86438', // 가죽 하이라이트
+                B: '#f5b942', // 금색 버클
+                P: '#a55eea', // 보라색 물약
+                W: '#e2e8f0', // 물약 유리/검날 하이라이트
+                S: '#94a3b8', // 검날
+                K: '#2c2733'  // 바지/망토
+            };
+
+            const frontGrid = [
+                "............OOOOOOOO............",
+                "..........OOMMMMMMMDOO..........",
+                ".........OMMMMMMMMMMDDO.........",
+                "........OMMMDDDDDDDDDDDO........",
+                ".......OMMDDDDFFFFFFFFDDO.......",
+                ".......OMDDDFFFFFFFFFFFFO.......",
+                "......OMDDDFFFFFFFFFFFFFFO......",
+                "......OMDDDFFFFFFFFFFFFFFO......",
+                "......OMDDDDFFFFFFFFFFFFDO......",
+                ".......OMDDDDFFFFFFFFFFDO.......",
+                "........OODDDDDDDDDDDDOO........",
+                ".....OOOOODDDDDDDDDDDDOOOOO.....",
+                "....ODDDDDDLLLLLLLLLLDDDDDDO....",
+                "...ODDDDDDLLTTLLLLTTLLDDDDDDO...",
+                "..OKKDDDDLLLTTLLLLTTLLLDDDDKKO..",
+                "..OKKDDDDLLLLLLLLLLLLLLDDDDKKO..",
+                ".OTTOKKKKLLLLLLLLLLLLLLKKKKOTTO.",
+                ".OTTOKKKKLLLLLLBBBBLLLLKKKKOTTO.",
+                ".OTTOKKKKLLLLLLBBBBLLLLKKKKOTTO.",
+                ".OLLO.OKKOOLLLLLLLLLLOOSSO..OLLO",
+                ".OLLO.OPPOOLLLLLLLLLLOOSSO..OLLO",
+                "..OO..OPPPOLLLLLLLLLLOOSSO...OO.",
+                "......OPPPOKKKKKKKKKKOOSSO......",
+                ".......OOOKKKKKKKKKKKKOOSSO.....",
+                "........OKKKKKKOOOKKKKKOOSSO....",
+                "........OKKKKKO...OKKKKO.OO.....",
+                "........OKKKKKO...OKKKKO........",
+                "........OTTTTTO...OTTTTO........",
+                ".......OOTTTTTO...OTTTTOO.......",
+                ".......OOOOOOOO...OOOOOOO......."
+            ];
+            drawMatrix(fCtx, frontGrid, pal, 1, 0, 8);
+
+            // 2) 우측면 캐릭터 (전투 화면 좌측, 오른쪽 몬스터를 바라보는 구도)
+            const sc = document.getElementById('hero-battle-canvas');
+            const sCtx = sc.getContext('2d');
+            sCtx.imageSmoothingEnabled = false;
+            sCtx.clearRect(0, 0, sc.width, sc.height);
+
+            const sidePal = {
+                O: '#110f17',
+                H: '#3e3347',
+                D: '#27202e',
+                M: '#564761',
+                F: '#141118',
+                L: '#854c29',
+                T: '#a86438',
+                R: '#c9a978', // 등짐 침낭
+                Y: '#ffbe3b', // 등짐 랜턴 불빛
+                P: '#a55eea', // 허리 물약
+                S: '#cbd5e1', // 검날
+                K: '#2c2733'
+            };
+
+            const sideGrid = [
+                "...........OOOOOOOOO............",
+                ".........OOMMMMMMMMDOO..........",
+                "........OMMMMMMMMMMMDDO.........",
+                ".......OMMMMMDDDDDDDDDDO........",
+                ".......OMMMMDDDFFFFFFFFO........",
+                "......OMMMMMDDDFFFFFFFFFO.......",
+                "......OMMMMMDDDFFFFFFFFFO.......",
+                ".......OMMMMMDDDFFFFFFFO........",
+                ".....OOOOOMMMMDDDDDDDDO.........",
+                "....ORRRROOMMMMMDDDDDOO.........",
+                "...ORRRRRROKLLLLLLLLLLOO........",
+                "...ORRRRRROKLLLLTTLLLLLO........",
+                "...OYYYYYYOKLLLLTTLLLLLO........",
+                "...OYYYYYYOKLLLLLLLLLLLO........",
+                "....OOOOOOOKLLLLLPPPLLLOO.......",
+                "......OKKKOKLLLLLPPPLLLSOO......",
+                "......OKKKOKLLLLLLLLLLSSSO......",
+                "......OKKKOKKKKKKKKKKSSSO.......",
+                ".......OO.OKKKKKKKKKSSSO........",
+                "..........OKKKKKKKKSSOO.........",
+                "..........OKKKKOKKKKO...........",
+                "..........OKKKKOKKKKO...........",
+                "..........OTTTTOOTTTO...........",
+                ".........OOTTTTOOTTTOO..........",
+                ".........OOOOOOOOOOOOO.........."
+            ];
+            drawMatrix(sCtx, sideGrid, sidePal, 1, 0, 12);
+        }
+
+        // 스테이지별 16비트 몬스터 스프라이트
+        function renderMonsterSprite(type = 'normal') {
+            const c = document.getElementById('enemy-battle-canvas');
+            const ctx = c.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, c.width, c.height);
+
+            if (type === 'boss') {
+                const pal = { O: '#0d0912', B: '#f1ece1', S: '#b8b0a2', R: '#ff2e4c', G: '#ffd32a', P: '#7d3cff', W: '#e2e8f0' };
+                const bossGrid = [
+                    "......G...G...G...G.......",
+                    "......GGGGGGGGGGGGG.......",
+                    "....OOBBBBBBBBBBBBBOO.....",
+                    "...OBBBBBBBBBBBBBBBBBO....",
+                    "...OBBBRRROBBBORRRBBBO....",
+                    "...OBBBBBBBBBBBBBBBBBO....",
+                    "....OBBBBBOBBBOBBBBBO.....",
+                    ".....OBBBBBBBBBBBBBO......",
+                    "..PPPPOOOSSSSSSSSOOOPPPP..",
+                    ".PPPPPPPOBBBBBBBBOOPPPPPP.",
+                    ".PP..PPPOBBBBBBBBOOP..PP..",
+                    "..W....OOOBBBBBBOOO.......",
+                    ".WW.....OBBBBOOBBBO.......",
+                    ".WW.....OBBBBOOBBBO.......",
+                    "........OSSSSOOSSSSO......",
+                    ".......OOSSSSOOSSSSOO....."
+                ];
+                drawMatrix(ctx, bossGrid, pal, 1, 3, 18);
+            } else if (type === 'elite') {
+                const pal = { O: '#0f111a', M: '#57606f', L: '#a4b0be', P: '#a55eea', R: '#ff4757' };
+                const eliteGrid = [
+                    "........OOOOOOOOOO........",
+                    ".......OMMMMMMMMMMO.......",
+                    "......OMLLLLLLLLLLMO......",
+                    "......OMRRRRRRRRRRMO......",
+                    "......OMMMMMMMMMMMMO......",
+                    "...PPPOMMMMMMMMMMMMOPPP...",
+                    "..PPPPOMLLLLLLLLLLMO.PPP..",
+                    "..PP..OMMMMMMMMMMMMO......",
+                    "......OMMMMMMMMMMMMO......",
+                    ".......OMMMMOOMMMMO.......",
+                    ".......OMMMMOOMMMMO.......",
+                    "......OOMMMMOOMMMMOO......"
+                ];
+                drawMatrix(ctx, eliteGrid, pal, 1, 3, 24);
+            } else {
+                // 2번째 이미지의 해골 병사(검 + 방패) 구도
+                const pal = { O: '#0f1014', B: '#f4efe6', S: '#b5afa2', R: '#ff6b6b', W: '#e2e8f0', D: '#4b5563' };
+                const skelGrid = [
+                    ".........OOOOOOO..........",
+                    "........OBBBBBBBBO........",
+                    ".......OBBBBBBBBBBO.......",
+                    ".......OBRROBBORRO........",
+                    ".......OBBBBBBBBBBO.......",
+                    "........OBBBOBBBBO........",
+                    ".........OBBBBBBO.........",
+                    ".....OOOOBBBBBBBBOOOO.....",
+                    "....OWW.OBBBBBBBBO.DDDO...",
+                    "...OWW..OBBBBBBBBO.DDDDDO.",
+                    "..OWW....OBBBBBBO..DDDDDO.",
+                    ".OWW.....OBBOOBBO..DDDDDO.",
+                    ".........OBBOOBBO...DDDDO.",
+                    ".........OSSO.OSSO...OO...",
+                    "........OOSSO.OSSOO......."
+                ];
+                drawMatrix(ctx, skelGrid, pal, 1, 3, 20);
+            }
+        }
+
+        // 등급별 16비트 픽셀 검 / 갑옷 / 룬 / 망치 / 툴바 아이콘 렌더링
+        function getGradePalette(grade) {
+            const map = {
+                '일반': { main: '#cbd5e1', light: '#f8fafc', dark: '#64748b' },
+                '희귀': { main: '#3b82f6', light: '#93c5fd', dark: '#1d4ed8' },
+                '영웅': { main: '#a855f7', light: '#e9d5ff', dark: '#6b21a8' },
+                '전설': { main: '#f59e0b', light: '#fef08a', dark: '#b45309' },
+                '신화': { main: '#ef4444', light: '#fecaca', dark: '#991b1b' },
+                '보스 전용': { main: '#f43f5e', light: '#fda4af', dark: '#881337' },
+                '없음': { main: '#374151', light: '#4b5563', dark: '#1f2937' }
+            };
+            return map[grade] || map['일반'];
+        }
+
+        function drawSwordIcon(canvas, grade) {
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const p = getGradePalette(grade);
+            const s = Math.floor(canvas.width / 16);
+            const grid = [
+                "............OO..",
+                "...........OLO..",
+                "..........OLMO..",
+                ".........OLMO...",
+                "........OLMO....",
+                ".......OLMO.....",
+                "......OLMO......",
+                ".....OLMO.......",
+                "..OOOLMO........",
+                ".OGGGLMO........",
+                "..OOGDO.........",
+                ".OWWOO..........",
+                "OWWO............",
+                "OOO.............",
+                "................",
+                "................"
+            ];
+            drawMatrix(ctx, grid, { O: '#0d0e14', M: p.main, L: p.light, D: p.dark, G: '#f5b942', W: '#8c5327' }, s);
+        }
+
+        function drawArmorIcon(canvas, grade) {
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const p = getGradePalette(grade);
+            const s = Math.floor(canvas.width / 16);
+            const grid = [
+                "................",
+                "..OOOO....OOOO..",
+                ".OLLMMOOOOLLMMO.",
+                "OLLMMMMMMMMMMMDO",
+                "OMMMMMMMMMMMMMDO",
+                "OMMMOCCCCCCOMMDO",
+                ".OO.OMMMMMMDOOO.",
+                "....OMMMMMMDO...",
+                "....OMMGGMMDO...",
+                "....OMMMMMMDO...",
+                ".....OMMMMDO....",
+                ".....OMMMMDO....",
+                "......OOOO......",
+                "................",
+                "................",
+                "................"
+            ];
+            drawMatrix(ctx, grid, { O: '#0d0e14', M: p.main, L: p.light, D: p.dark, C: '#1e2230', G: '#f5b942' }, s);
+        }
+
+        function renderStaticIcons() {
+            // 상단 하트 아이콘
+            const hc = document.getElementById('heart-canvas');
+            const hCtx = hc.getContext('2d');
+            hCtx.clearRect(0, 0, 16, 16);
+            drawMatrix(hCtx, [
+                "................",
+                "..OOOO....OOOO..",
+                ".ORRRRO..ORRRRO.",
+                "ORWWRRROORRRRRRO",
+                "ORWRRRRRRRRRRRRO",
+                "ORRRRRRRRRRRRRDO",
+                "ORRRRRRRRRRRRRDO",
+                ".ORRRRRRRRRRRDO.",
+                "..ORRRRRRRRRDO..",
+                "...ORRRRRRRDO...",
+                "....ORRRRRDO....",
+                ".....ORRRDO.....",
+                "......ORDO......",
+                ".......OO.......",
+                "................",
+                "................"
+            ], { O: '#10080c', R: '#e93848', W: '#ffc4c9', D: '#8c1120' }, 1);
+
+            // 대장간 망치 아이콘
+            const mc = document.getElementById('forge-hammer-canvas');
+            const mCtx = mc.getContext('2d');
+            mCtx.clearRect(0, 0, 32, 32);
+            drawMatrix(mCtx, [
+                "....OOOOOOOO....",
+                "...OMMMMMMMMO...",
+                "...OMLLLLLLMO...",
+                "...OMMMMMMMMO...",
+                "....OOOOOOOO....",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OOO......",
+                "................",
+                "................",
+                "................"
+            ], { O: '#0b0c12', M: '#747d8c', L: '#f1f5f9', W: '#a4632a' }, 2);
+
+            // 하단 8칸 석조 툴바 16x16 픽셀 아이콘 (2번째 이미지 하단 슬롯 대응)
+            drawSwordIcon(document.getElementById('slot-ic-0'), '전설');
+            drawSwordIcon(document.getElementById('slot-ic-1'), '희귀');
+            drawArmorIcon(document.getElementById('slot-ic-2'), '희귀');
+
+            // 3번 슬롯: 물약/스킬 병
+            const s3 = document.getElementById('slot-ic-3').getContext('2d');
+            drawMatrix(s3, [
+                "......OOOO......",
+                "......OWWO......",
+                ".......OO.......",
+                ".....OOOOOO.....",
+                "....OLLLLLLO....",
+                "...OCCCCCCCCO...",
+                "...OCCCCCCCCO...",
+                "...OCCCCCCCCO...",
+                "....OCCCCCCOO...",
+                ".....OOOOOO.....",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................"
+            ], { O: '#0d0e14', W: '#d97706', L: '#a5f3fc', C: '#06b6d4' }, 1);
+
+            // 4번 슬롯: 룬 스톤
+            const s4 = document.getElementById('slot-ic-4').getContext('2d');
+            drawMatrix(s4, [
+                ".......OO.......",
+                "......OPPO......",
+                ".....OPPPPO.....",
+                "....OPPLLPP0....",
+                "...OPPLLLLPP0...",
+                "...OPPLLLLPP0...",
+                "....OPPLLPPO....",
+                ".....OPPPPO.....",
+                "......OPPO......",
+                ".......OO.......",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................"
+            ], { O: '#0d0e14', P: '#9333ea', L: '#f3e8ff', '0': '#0d0e14' }, 1);
+
+            // 5번 슬롯: 마법 두루마리
+            const s5 = document.getElementById('slot-ic-5').getContext('2d');
+            drawMatrix(s5, [
+                "...OOOOOOOOOO...",
+                "..OYYYYYYYYYYO..",
+                "...OYYYYYYYYO...",
+                "...OYYPPPPYYO...",
+                "...OYYYYYYYYO...",
+                "...OYYPPPPYYO...",
+                "...OYYYYYYYYO...",
+                "..OYYYYYYYYYYO..",
+                "...OOOOOOOOOO...",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................"
+            ], { O: '#0d0e14', Y: '#fde68a', P: '#a855f7' }, 1);
+
+            // 6번 슬롯: 대장간 망치
+            const s6 = document.getElementById('slot-ic-6').getContext('2d');
+            drawMatrix(s6, [
+                "....OOOOOOOO....",
+                "...OMLLLLLLMO...",
+                "...OMMMMMMMMO...",
+                "....OOOOOOOO....",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OWO......",
+                ".......OOO......",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................"
+            ], { O: '#0d0e14', M: '#64748b', L: '#e2e8f0', W: '#b45309' }, 1);
+
+            // 7번 슬롯: 질주 부츠
+            const s7 = document.getElementById('slot-ic-7').getContext('2d');
+            drawMatrix(s7, [
+                ".....OOOOO......",
+                ".....OLLLO......",
+                ".....OLLLO......",
+                ".....OLLLOOO....",
+                "....OLLLLLLLO...",
+                "...OLLLLLLLLLO..",
+                "...OOOOOOOOOOO..",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................",
+                "................"
+            ], { O: '#0d0e14', L: '#f59e0b' }, 1);
+
+            // 대장간 우측 슬롯 아이콘
+            drawSwordIcon(document.getElementById('rack-ic-sword'), '전설');
+            drawArmorIcon(document.getElementById('rack-ic-armor'), '희귀');
+            drawSwordIcon(document.getElementById('rack-ic-back'), '일반');
+        }
+
+        function renderForgeAnvilItem() {
+            const c = document.getElementById('anvil-item-canvas');
+            if (currentUpgradeType === 'sword') {
+                drawSwordIcon(c, player.sword.grade);
+            } else {
+                drawArmorIcon(c, player.armor.grade);
+            }
+        }
+
+        // =========================================================================
+        // 3. 대장간 애니메이션 리셋 (재입장 시 이전 연출 반복 버그 원천 차단)
+        // =========================================================================
+        function resetForgeEffects() {
+            forgeTimers.forEach(t => clearTimeout(t));
+            forgeTimers = [];
+            isForgingAnim = false;
+
+            const hammer = document.getElementById('forge-hammer-canvas');
+            const lightFx = document.getElementById('fx-success-light');
+            const boomFx = document.getElementById('fx-fail-boom');
+            const banner = document.getElementById('forge-result-banner');
+            const stageEl = document.getElementById('forge-stage');
+
+            if (hammer) hammer.classList.remove('striking');
+            if (lightFx) lightFx.classList.remove('active');
+            if (boomFx) boomFx.classList.remove('active');
+            if (banner) {
+                banner.className = 'forge-toast';
+                banner.innerText = '';
+            }
+            if (stageEl) stageEl.classList.remove('shake-now');
+        }
+
+        // =========================================================================
+        // 4. 화면 전환 & 시작 화면 제어
+        // =========================================================================
+        function enterGameFromTitle() {
+            document.getElementById('start-screen').style.display = 'none';
+            updateUI();
+        }
+
+        function resetSaveData() {
+            if (confirm("저장된 모험 데이터를 초기화하고 처음부터 시작할까요?")) {
+                localStorage.removeItem("pixel_dungeon_save");
+                location.reload();
+            }
+        }
+
+        function switchView(viewName) {
+            resetForgeEffects(); // 탭 전환 시 대장간 이펙트 클래스 완전 초기화
+            document.querySelectorAll('.screen-view').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(`view-${viewName}`).classList.add('active');
+            document.getElementById(`tab-${viewName}`).classList.add('active');
+            updateUI();
+        }
+
+        // =========================================================================
+        // 5. 저장 및 UI 동기화
+        // =========================================================================
+        function saveGame() {
+            const gameData = { player, stage, battleSpeed, autoSkill, skills, runes, setStatus };
+            localStorage.setItem("pixel_dungeon_save", JSON.stringify(gameData));
+        }
+
+        function loadGame() {
+            const saved = localStorage.getItem("pixel_dungeon_save");
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    Object.assign(player, data.player);
+                    stage = data.stage;
+                    battleSpeed = data.battleSpeed || 1;
+                    autoSkill = data.autoSkill !== undefined ? data.autoSkill : true;
+                    skills.length = 0;
+                    if (data.skills) data.skills.forEach(s => skills.push(s));
+                    runes.length = 0;
+                    if (data.runes) data.runes.forEach(r => runes.push(r));
+                    Object.assign(setStatus, data.setStatus || {});
+                    addLog("💾 이전 모험 데이터를 성공적으로 불러왔습니다!", "log-highlight");
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+        }
+
+        function updateUI() {
+            document.getElementById("ui-stage").innerText = `Stage ${stage}`;
+            document.getElementById("char-stage-num").innerText = stage;
+            document.getElementById("ui-gold").innerText = player.gold;
+            document.getElementById("ui-keys").innerText = player.keys;
+
+            document.getElementById("ui-hp-num").innerText = `${player.hp} / ${player.maxHp}`;
+            document.getElementById("char-hp-val").innerText = `${player.hp}/${player.maxHp}`;
+            const hpPercent = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+            document.getElementById("ui-hp-bar").style.width = `${hpPercent}%`;
+
+            document.getElementById("ui-atk").innerText = player.attack;
+            document.getElementById("ui-def").innerText = player.defense;
+            document.getElementById("arena-atk").innerText = player.attack;
+            document.getElementById("arena-def").innerText = player.defense;
+
+            if (!isBattling) {
+                const isBoss = stage % 10 === 0;
+                const isElite = !isBoss && stage % 5 === 0;
+                const label = isBoss
+                    ? `🔥 STAGE ${stage} - 던전 보스 출현`
+                    : (isElite ? `⚔️ STAGE ${stage} - 엘리트 수호자` : `STAGE ${stage} - 지하 던전 복도`);
+                document.getElementById("arena-stage-banner").innerText = label;
+                document.getElementById("enemy-name-tag").innerText = isBoss
+                    ? `던전 보스 (Lv.${stage})`
+                    : (isElite ? `엘리트 기사 (Lv.${stage})` : `던전 해골 (Lv.${stage})`);
+                document.getElementById("enemy-hp-fill").style.width = "100%";
+                renderMonsterSprite(isBoss ? 'boss' : (isElite ? 'elite' : 'normal'));
+            }
+
+            // 장비 정보 갱신
+            const swNameEl = document.getElementById("ui-sword-name");
+            swNameEl.innerText = player.sword.name;
+            swNameEl.className = `gear-name grade-${player.sword.grade}`;
+            document.getElementById("ui-sword-stat").innerText = `+${player.sword.bonus} (+${player.sword.level}강)`;
+
+            const bSwNameEl = document.getElementById("ui-boss-sword-name");
+            bSwNameEl.innerText = player.bossSword.name;
+            bSwNameEl.className = `gear-name ${player.bossSword.bonus > 0 ? 'grade-보스전용' : ''}`;
+            document.getElementById("ui-boss-sword-stat").innerText = `+${player.bossSword.bonus}`;
+
+            const arNameEl = document.getElementById("ui-armor-name");
+            arNameEl.innerText = player.armor.name;
+            arNameEl.className = `gear-name grade-${player.armor.grade}`;
+            document.getElementById("ui-armor-stat").innerText = `+${player.armor.bonus} (+${player.armor.level}강)`;
+
+            const bArNameEl = document.getElementById("ui-boss-armor-name");
+            bArNameEl.innerText = player.bossArmor.name;
+            bArNameEl.className = `gear-name ${player.bossArmor.bonus > 0 ? 'grade-보스전용' : ''}`;
+            document.getElementById("ui-boss-armor-stat").innerText = `+${player.bossArmor.bonus}`;
+
+            drawSwordIcon(document.getElementById('icon-sword'), player.sword.grade);
+            drawSwordIcon(document.getElementById('icon-boss-sword'), player.bossSword.grade);
+            drawArmorIcon(document.getElementById('icon-armor'), player.armor.grade);
+            drawArmorIcon(document.getElementById('icon-boss-armor'), player.bossArmor.grade);
+
+            // 캐릭터 정보창 룬 & 세트 효과 갱신
+            const runeBox = document.getElementById("char-rune-list");
+            if (runes.length === 0) {
+                runeBox.innerHTML = `<div style="color:var(--text-sub); font-size:0.78rem;">보유한 룬이 없습니다. (5층 단위 엘리트 처치 시 드롭)</div>`;
+            } else {
+                runeBox.innerHTML = runes.map(r => `
+                    <div class="rune-card">
+                        <span style="font-size:1.1rem;">🔮</span>
+                        <div>
+                            <b class="grade-${r.grade}">${r.name}</b><br>
+                            <span style="color:var(--green);">HP+${r.hp} / 공+${r.atk} / 방+${r.def}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            document.getElementById("badge-set-normal").className = `set-pill ${setStatus.normal ? 'on' : ''}`;
+            document.getElementById("badge-set-normal").innerText = setStatus.normal ? '✨ 일반 세트 활성 (+HP15/공3/방2)' : '일반 룬 세트 (미완성)';
+            document.getElementById("badge-set-rare").className = `set-pill ${setStatus.rare ? 'on' : ''}`;
+            document.getElementById("badge-set-rare").innerText = setStatus.rare ? '✨ 희귀 세트 활성 (+HP35/공7/방5)' : '희귀 룬 세트 (미완성)';
+            document.getElementById("badge-set-hero").className = `set-pill ${setStatus.hero ? 'on' : ''}`;
+            document.getElementById("badge-set-hero").innerText = setStatus.hero ? '✨ 영웅 세트 활성 (+HP80/공15/방10)' : '영웅 룬 세트 (미완성)';
+
+            document.getElementById("ui-skill-count").innerText = `${skills.length}개`;
+            document.getElementById("ui-rune-count").innerText = `${runes.length}개`;
+
+            const speedNames = { 1: "1배속", 2: "2배속", 3: "스킵" };
+            if (stage >= 10) {
+                document.getElementById("ui-speed-lock").innerText = speedNames[battleSpeed];
+                document.getElementById("ui-speed-lock").style.color = "var(--cyan)";
+            }
+
+            updateForgeUI();
+            saveGame();
+        }
+
+        function addLog(text, className = "") {
+            const box = document.getElementById("ui-log-box");
+            const line = document.createElement("div");
+            line.className = `log-line ${className}`;
+            line.innerHTML = text;
+            box.appendChild(line);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById("ui-log-box").innerHTML = "";
+        }
+
+        // =========================================================================
+        // 6. 전투 연출 & 데미지 공식
+        // =========================================================================
+        function calcDamage(atk, def) {
+            const effectiveDef = Math.max(0, def);
+            const dmg = Math.floor((atk * 100) / (100 + effectiveDef));
+            return Math.max(1, dmg);
+        }
+
+        function spawnFloatingText(targetId, text, color) {
+            if (battleSpeed === 3) return;
+            const target = document.getElementById(targetId);
+            const arena = document.getElementById("battle-arena");
+            const el = document.createElement("div");
+            el.className = "dmg-popup";
+            el.style.color = color;
+            el.innerText = text;
+            el.style.left = (target.offsetLeft + 34) + "px";
+            el.style.top = (target.offsetTop + 18) + "px";
+            arena.appendChild(el);
+            setTimeout(() => el.remove(), 700);
+        }
+
+        function triggerCombatAnim(elId, animClass) {
+            if (battleSpeed === 3) return;
+            const el = document.getElementById(elId);
+            el.classList.remove(animClass);
+            void el.offsetWidth;
+            el.classList.add(animClass);
+            setTimeout(() => el.classList.remove(animClass), 250);
+        }
+
+        async function enterDungeon() {
+            if (isBattling) return;
+            isBattling = true;
+            document.getElementById("btn-enter").disabled = true;
+
+            const isBoss = (stage % 10 === 0);
+            const isElite = (!isBoss && stage % 5 === 0);
+
+            let monster;
+            if (isBoss) {
+                monster = {
+                    name: `🔥 던전 보스 (Stage ${stage})`,
+                    hp: 200 + stage * 25,
+                    maxHp: 200 + stage * 25,
+                    attack: 16 + stage * 1,
+                    defense: Math.floor(4 + stage / 2),
+                    gold: 200 + stage * 20,
+                    isBoss: true
+                };
+                renderMonsterSprite('boss');
+            } else if (isElite) {
+                monster = {
+                    name: `⚔️ 엘리트 몬스터 (Stage ${stage})`,
+                    hp: 100 + stage * 15,
+                    maxHp: 100 + stage * 15,
+                    attack: 12 + stage * 3,
+                    defense: 3 + stage,
+                    gold: 100 + stage * 10,
+                    keyRate: 100,
+                    isElite: true
+                };
+                renderMonsterSprite('elite');
+            } else {
+                monster = {
+                    name: `일반 몬스터 (Stage ${stage})`,
+                    hp: 30 + stage * 12,
+                    maxHp: 30 + stage * 12,
+                    attack: 5 + stage * 2,
+                    defense: 1 + stage,
+                    gold: 20 + stage * 5,
+                    keyRate: 50
+                };
+                renderMonsterSprite('normal');
+            }
+
+            document.getElementById("enemy-name-tag").innerText = monster.name;
+            document.getElementById("enemy-hp-fill").style.width = "100%";
+            addLog(`========== 던전 입장: ${monster.name} ==========`, "log-highlight");
+            skills.forEach(s => s.currentCooldown = 0);
+
+            const delay = battleSpeed === 1 ? 300 : (battleSpeed === 2 ? 80 : 0);
+            let turn = 0;
+
+            while (player.hp > 0 && monster.hp > 0) {
+                turn++;
+
+                // 1. 플레이어 공격
+                const pDmg = calcDamage(player.attack, monster.defense);
+                monster.hp = Math.max(0, monster.hp - pDmg);
+                if (battleSpeed !== 3) {
+                    triggerCombatAnim("hero-combatant", "anim-lunge-right");
+                    triggerCombatAnim("enemy-combatant", "anim-hit");
+                    spawnFloatingText("enemy-combatant", `-${pDmg}`, "#ffcf5c");
+                    document.getElementById("enemy-hp-fill").style.width = `${(monster.hp / monster.maxHp) * 100}%`;
+                    addLog(`[${turn}턴] 모험가의 공격! ➜ ${monster.name}에게 <b class="log-damage">${pDmg}</b> 피해 (남은 HP: ${monster.hp}/${monster.maxHp})`);
+                    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                }
+
+                if (monster.hp <= 0) break;
+
+                // 2. 스킬 발동
+                const readySkill = autoSkill
+                    ? skills.filter(s => s.currentCooldown <= 0).sort((a, b) => b.damage - a.damage)[0]
+                    : null;
+                if (readySkill) {
+                    const sDmg = readySkill.damage + (readySkill.level * 5);
+                    monster.hp = Math.max(0, monster.hp - sDmg);
+                    readySkill.currentCooldown = readySkill.cooldown;
+                    if (battleSpeed !== 3) {
+                        triggerCombatAnim("enemy-combatant", "anim-hit");
+                        spawnFloatingText("enemy-combatant", `⚡-${sDmg}`, "#4deeea");
+                        document.getElementById("enemy-hp-fill").style.width = `${(monster.hp / monster.maxHp) * 100}%`;
+                        addLog(`⚡ [스킬 발동!] ${readySkill.name} (+${readySkill.level}) ➜ <b class="log-magic">${sDmg}</b> 마법 피해!`, "log-magic");
+                        if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                    }
+                }
+
+                if (monster.hp <= 0) break;
+
+                // 3. 몬스터 반격
+                const mDmg = calcDamage(monster.attack, player.defense);
+                player.hp = Math.max(0, player.hp - mDmg);
+                if (battleSpeed !== 3) {
+                    triggerCombatAnim("enemy-combatant", "anim-lunge-left");
+                    triggerCombatAnim("hero-combatant", "anim-hit");
+                    spawnFloatingText("hero-combatant", `-${mDmg}`, "#ff4757");
+                    updateUI();
+                    addLog(`${monster.name}의 반격! ➜ 모험가에게 <b class="log-damage">${mDmg}</b> 피해`);
+                    if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                }
+
+                skills.forEach(s => { if (s.currentCooldown > 0) s.currentCooldown--; });
+            }
+
+            if (player.hp > 0) {
+                addLog(`🎉 ${monster.name} 처치 성공! (${turn}턴 소요)`, "log-highlight");
+                player.gold += monster.gold;
+                addLog(`🪙 ${monster.gold} 골드를 획득했습니다.`);
+
+                const keyRate = monster.isBoss ? 100 : (monster.keyRate || 50);
+                if (Math.random() * 100 <= keyRate) {
+                    player.keys += 1;
+                    addLog(`🗝️ 열쇠 1개를 획득했습니다!`, "log-highlight");
+                }
+
+                if (monster.isBoss) {
+                    if (Math.random() * 100 <= 30) {
+                        const atkBonus = 120 + stage * 5;
+                        const sellPrice = 400 + stage * 20;
+                        if (atkBonus > player.bossSword.bonus) {
+                            player.attack -= player.bossSword.bonus;
+                            player.bossSword = { name: "파멸을 부르는 심연의 대검", grade: "보스 전용", bonus: atkBonus, sellPrice };
+                            player.attack += atkBonus;
+                            addLog(`👑 [보스 전용 검 획득!] ${player.bossSword.name} (+${atkBonus} ATK)`, "log-legend");
+                        } else {
+                            player.gold += sellPrice;
+                            addLog(`기존 보스검보다 약하여 ${sellPrice}골드에 자동 판매되었습니다.`);
+                        }
+                    }
+                    if (Math.random() * 100 <= 20) {
+                        const defBonus = 70 + stage * 3;
+                        const sellPrice = 400 + stage * 20;
+                        if (defBonus > player.bossArmor.bonus) {
+                            player.defense -= player.bossArmor.bonus;
+                            player.bossArmor = { name: "던전 군주의 흑철 갑주", grade: "보스 전용", bonus: defBonus, sellPrice };
+                            player.defense += defBonus;
+                            addLog(`👑 [보스 전용 갑옷 획득!] ${player.bossArmor.name} (+${defBonus} DEF)`, "log-legend");
+                        } else {
+                            player.gold += sellPrice;
+                            addLog(`기존 보스갑옷보다 약하여 ${sellPrice}골드에 자동 판매되었습니다.`);
+                        }
+                    }
+                }
+
+                if (monster.isElite && Math.random() * 100 <= 60) {
+                    dropRune();
+                }
+
+                const healRate = monster.isBoss ? 0.4 : 0.3;
+                const healAmount = Math.floor(player.maxHp * healRate);
+                player.hp = Math.min(player.maxHp, player.hp + healAmount);
+                addLog(`💖 승리 보너스로 체력을 ${healAmount} 회복했습니다.`, "log-heal");
+
+                stage++;
+                if (stage === 10) {
+                    addLog(`🔓 [10스테이지 도달 축하!] 전투 배속 설정 기능이 잠금 해제되었습니다!`, "log-highlight");
+                }
+            } else {
+                addLog(`💀 모험가가 쓰러졌습니다... 이전 스테이지로 후퇴합니다.`, "log-damage");
+                if (stage > 1) stage--;
+                player.hp = player.maxHp;
+                addLog(`체력이 100% 회복되었습니다. 재도전해 보세요!`, "log-heal");
+            }
+
+            isBattling = false;
+            document.getElementById("btn-enter").disabled = false;
+            updateUI();
+        }
+
+        // =========================================================================
+        // 7. 룬 & 상자 가챠
+        // =========================================================================
+        function dropRune() {
+            let grade = "일반";
+            const roll = Math.random() * 100;
+            if (stage >= 25 && roll <= 20) grade = "영웅";
+            else if (stage >= 15 && roll <= 40) grade = "희귀";
+            else if (roll <= 30) grade = "희귀";
+
+            const typeRoll = Math.floor(Math.random() * 3);
+            let name = "", hp = 0, atk = 0, def = 0;
+            if (typeRoll === 0) {
+                name = `${grade} 생명의 룬`;
+                hp = grade === "일반" ? 15 : (grade === "희귀" ? 35 : 70);
+            } else if (typeRoll === 1) {
+                name = `${grade} 수호의 룬`;
+                def = grade === "일반" ? 2 : (grade === "희귀" ? 5 : 10);
+            } else {
+                name = `${grade} 용기의 룬`;
+                atk = grade === "일반" ? 3 : (grade === "희귀" ? 7 : 15);
+            }
+
+            if (runes.some(r => r.name === name)) {
+                player.gold += 100;
+                addLog(`이미 보유한 룬(${name})이라 100골드로 자동 보상되었습니다.`);
+                return;
+            }
+
+            runes.push({ name, grade, hp, atk, def });
+            player.maxHp += hp;
+            player.hp += hp;
+            player.attack += atk;
+            player.defense += def;
+            addLog(`🔮 [룬 획득!] ${name} (HP+${hp}, 공+${atk}, 방+${def})`, "log-magic");
+
+            const normals = runes.filter(r => r.grade === "일반").length;
+            const rares = runes.filter(r => r.grade === "희귀").length;
+            const heroes = runes.filter(r => r.grade === "영웅").length;
+
+            if (!setStatus.normal && normals >= 3) {
+                setStatus.normal = true;
+                player.maxHp += 15; player.hp += 15; player.attack += 3; player.defense += 2;
+                addLog(`✨ [세트 발동!] 일반 룬 세트 완성! (추가 HP+15, 공+3, 방+2)`, "log-highlight");
+            }
+            if (!setStatus.rare && rares >= 3) {
+                setStatus.rare = true;
+                player.maxHp += 35; player.hp += 35; player.attack += 7; player.defense += 5;
+                addLog(`✨ [세트 발동!] 희귀 룬 세트 완성! (추가 HP+35, 공+7, 방+5)`, "log-highlight");
+            }
+            if (!setStatus.hero && heroes >= 3) {
+                setStatus.hero = true;
+                player.maxHp += 80; player.hp += 80; player.attack += 15; player.defense += 10;
+                addLog(`✨ [세트 발동!] 영웅 룬 세트 완성! (추가 HP+80, 공+15, 방+10)`, "log-highlight");
+            }
+        }
+
+        function openChest(type) {
+            if (player.keys < 1) {
+                alert("열쇠가 부족합니다! (던전에서 몬스터를 잡아 획득하세요)");
+                return;
+            }
+            player.keys -= 1;
+            const roll = Math.random() * 100;
+
+            if (type === 'sword') {
+                let grade = "일반", name = "철 단검", bonus = 10, sell = 30;
+                if (roll > 99) { grade = "신화"; name = "엑스칼리버"; bonus = 400; sell = 1500; }
+                else if (roll > 95) { grade = "전설"; name = "드래곤 슬레이어"; bonus = 250; sell = 600; }
+                else if (roll > 80) { grade = "영웅"; name = "룬문자 플랑베르주"; bonus = 150; sell = 250; }
+                else if (roll > 50) { grade = "희귀"; name = "은빛 기사의 롱소드"; bonus = 70; sell = 100; }
+
+                if (bonus > player.sword.bonus) {
+                    player.gold += player.sword.sellPrice;
+                    player.attack -= (player.sword.bonus + player.sword.level * 5);
+                    player.sword = { name, grade, bonus, sellPrice: sell, level: 0 };
+                    player.attack += bonus;
+                    addLog(`🗡️ [검 상자 개봉] <b class="grade-${grade}">${name} [${grade}]</b> 장착! (+${bonus} ATK)`, "log-highlight");
+                } else {
+                    player.gold += sell;
+                    addLog(`기존 검보다 약한 ${name}을(를) ${sell}골드에 판매했습니다.`);
+                }
+            } else if (type === 'armor') {
+                let grade = "일반", name = "가죽 흉갑", bonus = 10, sell = 30;
+                if (roll > 99) { grade = "신화"; name = "아이기스의 성갑"; bonus = 200; sell = 1500; }
+                else if (roll > 95) { grade = "전설"; name = "흑룡의 비늘 갑옷"; bonus = 130; sell = 600; }
+                else if (roll > 80) { grade = "영웅"; name = "성기사의 판금 갑옷"; bonus = 80; sell = 250; }
+                else if (roll > 50) { grade = "희귀"; name = "사슬 갑옷"; bonus = 40; sell = 100; }
+
+                if (bonus > player.armor.bonus) {
+                    player.gold += player.armor.sellPrice;
+                    player.defense -= (player.armor.bonus + player.armor.level * 2);
+                    player.armor = { name, grade, bonus, sellPrice: sell, level: 0 };
+                    player.defense += bonus;
+                    addLog(`🛡️ [갑옷 상자 개봉] <b class="grade-${grade}">${name} [${grade}]</b> 장착! (+${bonus} DEF)`, "log-highlight");
+                } else {
+                    player.gold += sell;
+                    addLog(`기존 갑옷보다 약한 ${name}을(를) ${sell}골드에 판매했습니다.`);
+                }
+            } else if (type === 'skill') {
+                let grade = "희귀", damage = 30;
+                if (roll > 97) { grade = "신화"; damage = 180; }
+                else if (roll > 85) { grade = "전설"; damage = 100; }
+                else if (roll > 55) { grade = "영웅"; damage = 60; }
+
+                const sTypes = [
+                    { name: "화염 강타", cd: 3 },
+                    { name: "번개 일격", cd: 2 },
+                    { name: "대지 분쇄", cd: 4 }
+                ];
+                const pick = sTypes[Math.floor(Math.random() * sTypes.length)];
+                const existing = skills.find(s => s.name === pick.name);
+
+                if (existing) {
+                    if (damage > existing.damage) {
+                        existing.damage = damage;
+                        existing.grade = grade;
+                        addLog(`⚡ ${pick.name} 스킬이 더 높은 등급(${grade})으로 승급되었습니다!`, "log-magic");
+                    }
+                    if (existing.level < 10) {
+                        existing.level++;
+                        addLog(`⚡ ${pick.name} 스킬이 강화되었습니다! (+${existing.level})`, "log-highlight");
+                    }
+                } else {
+                    skills.push({ name: pick.name, grade, damage, cooldown: pick.cd, currentCooldown: 0, level: 0 });
+                    addLog(`⚡ [새 스킬 습득!] ${pick.name} [${grade}] (피해: ${damage}, 쿨타임: ${pick.cd}턴)`, "log-magic");
+                }
+            }
+
+            updateUI();
+        }
+
+        // =========================================================================
+        // 8. 대장간 강화 시스템 & 망치 / 빛 / 폭발 이펙트
+        // =========================================================================
+        function getSuccessRate(level) {
+            if (level < 3) return 100;
+            if (level < 5) return 80;
+            if (level < 7) return 60;
+            if (level < 9) return 40;
+            return 20;
+        }
+
+        function selectForgeTarget(type) {
+            resetForgeEffects();
+            currentUpgradeType = type;
+            document.getElementById('forge-sel-sword').classList.toggle('selected', type === 'sword');
+            document.getElementById('forge-sel-armor').classList.toggle('selected', type === 'armor');
+            updateForgeUI();
+        }
+
+        function updateForgeUI() {
+            const item = (currentUpgradeType === 'sword') ? player.sword : player.armor;
+            const rate = getSuccessRate(item.level);
+            const icon = currentUpgradeType === 'sword' ? '🗡️' : '🛡️';
+
+            document.getElementById('forge-title').innerText = `${icon} ${item.name} (+${item.level}강)`;
+            document.getElementById('forge-sub').innerText = `성공 확률: ${rate}% | 비용: 100G | 보유 골드: ${player.gold}G`;
+
+            document.getElementById('forge-bar-lv').style.width = `${item.level * 10}%`;
+            document.getElementById('forge-bar-lv-txt').innerText = `강화 단계: +${item.level} / +10`;
+
+            document.getElementById('forge-bar-rate').style.width = `${rate}%`;
+            document.getElementById('forge-bar-rate-txt').innerText = `성공 확률: ${rate}%`;
+
+            const goldPct = Math.min(100, (player.gold / 1000) * 100);
+            document.getElementById('forge-bar-gold').style.width = `${goldPct}%`;
+            document.getElementById('forge-bar-gold-txt').innerText = `보유 골드: ${player.gold} G`;
+
+            renderForgeAnvilItem();
+        }
+
+        function playForgeEffect(isSuccess, customMsg) {
+            resetForgeEffects();
+            isForgingAnim = true;
+
+            const hammer = document.getElementById('forge-hammer-canvas');
+            const lightFx = document.getElementById('fx-success-light');
+            const boomFx = document.getElementById('fx-fail-boom');
+            const banner = document.getElementById('forge-result-banner');
+            const stageEl = document.getElementById('forge-stage');
+
+            void hammer.offsetWidth;
+            hammer.classList.add('striking');
+
+            const t1 = setTimeout(() => {
+                if (isSuccess) {
+                    lightFx.classList.add('active');
+                    banner.innerText = customMsg || '✨ 강화 성공! 빛의 축복 ✨';
+                    banner.classList.add('show-ok');
+                } else {
+                    boomFx.classList.add('active');
+                    stageEl.classList.add('shake-now');
+                    banner.innerText = customMsg || '💥 강화 실패! 모루 폭발 💥';
+                    banner.classList.add('show-no');
+                }
+            }, 190);
+
+            // 애니메이션 완료 후 클래스를 깨끗하게 제거해 재입장 시 반복 재생 방지
+            const t2 = setTimeout(() => {
+                resetForgeEffects();
+                updateUI();
+            }, 1050);
+
+            forgeTimers.push(t1, t2);
+        }
+
+        function doUpgradeOnce() {
+            if (isForgingAnim) return;
+            const item = (currentUpgradeType === 'sword') ? player.sword : player.armor;
+            if (item.level >= 10) { alert("이미 최대 강화 단계입니다! (+10)"); return; }
+            if (player.gold < 100) { alert("골드가 부족합니다! (100G 필요)"); return; }
+
+            player.gold -= 100;
+            const rate = getSuccessRate(item.level);
+            const success = Math.random() * 100 <= rate;
+
+            if (success) {
+                item.level++;
+                if (currentUpgradeType === 'sword') player.attack += 5;
+                else player.defense += 2;
+                addLog(`✨ [강화 성공!] ${item.name} 강화 +${item.level} 달성!`, "log-highlight");
+                updateForgeUI();
+                playForgeEffect(true, `✨ 강화 성공! +${item.level}강 ✨`);
+            } else {
+                addLog(`💥 [강화 실패] ${item.name} 강화에 실패했습니다. (장비 유지)`, "log-damage");
+                updateForgeUI();
+                playForgeEffect(false, `💥 강화 실패! (장비 유지) 💥`);
+            }
+        }
+
+        function doAutoUpgrade() {
+            if (isForgingAnim) return;
+            const item = (currentUpgradeType === 'sword') ? player.sword : player.armor;
+            if (item.level >= 10) { alert("이미 최대 강화 단계입니다!"); return; }
+            if (player.gold < 100) { alert("골드가 부족합니다!"); return; }
+
+            let attempts = 0, success = 0, fail = 0;
+            const startLevel = item.level;
+
+            while (item.level < 10 && player.gold >= 100) {
+                attempts++;
+                player.gold -= 100;
+                const rate = getSuccessRate(item.level);
+                if (Math.random() * 100 <= rate) {
+                    item.level++;
+                    if (currentUpgradeType === 'sword') player.attack += 5;
+                    else player.defense += 2;
+                    success++;
+                } else {
+                    fail++;
+                }
+            }
+
+            addLog(`🔨 [연속 강화 결과] +${startLevel} ➜ +${item.level}강 도달! (총 ${attempts}회, 성공 ${success}, 실패 ${fail})`, "log-highlight");
+            updateForgeUI();
+            playForgeEffect(success > 0, success > 0 ? `✨ +${item.level}강 도달! (성공 ${success}회) ✨` : `💥 연속 강화 모두 실패 (${fail}회) 💥`);
+        }
+
+        // =========================================================================
+        // 9. 스킬 & 배속 모달 제어
+        // =========================================================================
+        function openSkillModal() {
+            let html = "";
+            if (skills.length === 0) {
+                html = `<p style="color:var(--text-sub); font-size:0.82rem;">보유한 스킬이 없습니다. (하단 툴바에서 스킬 상자를 열어보세요)</p>`;
+            } else {
+                skills.forEach(s => {
+                    html += `
+                        <div style="background:#171a26; border:2px solid #454b60; padding:10px;">
+                            <b>${s.name}</b> <span class="grade-${s.grade}">[${s.grade}]</span> (+${s.level}강)
+                            <div style="font-size:0.76rem; color:var(--text-sub); margin-top:4px;">피해량: ${s.damage + s.level * 5} | 쿨타임: ${s.cooldown}턴</div>
+                        </div>
+                    `;
+                });
+            }
+            document.getElementById("modal-skill-list").innerHTML = html;
+            document.getElementById("btn-toggle-auto-skill").innerText = autoSkill ? "자동 시전 ON" : "수동 선택 ON";
+            document.getElementById("modal-skill").style.display = "flex";
+        }
+
+        function toggleAutoSkill() {
+            autoSkill = !autoSkill;
+            document.getElementById("btn-toggle-auto-skill").innerText = autoSkill ? "자동 시전 ON" : "수동 선택 ON";
+            addLog(`스킬 시전 모드가 [${autoSkill ? '자동 시전' : '수동 선택'}]으로 변경되었습니다.`);
+            saveGame();
+        }
+
+        function openSpeedModal() {
+            if (stage < 10) {
+                alert("전투 배속 설정은 10스테이지(첫 보스 토벌) 이후에 해금됩니다!");
+                return;
+            }
+            document.getElementById("modal-speed").style.display = "flex";
+        }
+
+        function setBattleSpeed(speed) {
+            battleSpeed = speed;
+            closeModal("modal-speed");
+            const speedNames = { 1: "1배속", 2: "2배속", 3: "자동 스킵" };
+            addLog(`전투 배속이 [${speedNames[speed]}]으로 설정되었습니다.`);
+            updateUI();
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).style.display = "none";
+        }
+
+        // 초기 실행
+        window.onload = () => {
+            renderStartBackground();
+            renderBattleBackground();
+            renderForgeBackground();
+            renderHeroSprites();
+            renderStaticIcons();
+            loadGame();
+            updateUI();
+        };
+    </script>
+</body>
+
+</html>
