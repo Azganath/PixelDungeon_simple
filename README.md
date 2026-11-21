@@ -6,7 +6,7 @@
 장비를 강화하고 보스를 토벌하며 더 높은 스테이지에 도전해 보세요!
 
 ## 🎮 게임 플레이 링크
-👉 **[여기를 클릭해서 게임 시작하기](https://내아이디.github.io/저장소이름/)**
+👉 **[여기를 클릭해서 게임 시작하기](https://jun-joyfully.github.io/PixelDungeon_simple/)**
 
 ---
 
