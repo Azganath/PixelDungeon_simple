@@ -82,7 +82,10 @@
 | **3.1** Prestigio / renacimiento (B3) | ✅ Hecho / Done | `S.prestige.stars` (+10 % por estrella, tope ×3), modal `🌟 프레스티지`, desbloqueo en Stage 100, reset de equipo/entrenamiento/runas conservando códice, logros, disfraces, mascotas, oro y llaves |
 | **3.5** Curvas de entrenamiento + 승급 (A1.3/A1.4) | ✅ Hecho / Done | `CF.trainCost` con `1.02^lv`, `CF.trainSum` (lineal hasta Lv.100 y luego decreciente), primer 승급 gratis y después 50 000 / 200 000 G; `docs/BALANCE.md` + `tools/sim-balance.js` (200 batallas por piso, semilla fija) y guardia en CI |
 
-**Pendiente / Pending:** **3.2** (loadouts + reglas de auto-cast), **3.3** (patrones de jefe + estados), **3.4** (inventario de equipo) y las fases i18n **T2/T3**.
+| **3.2** Loadouts + reglas de auto-cast (B4) | ✅ Hecho / Done | `S.loadouts` (3 presets: habilidades · mascota · velocidad · reglas), `S.skillRules` (`always`/`bossOnly`/`burst`), `CF.autoCastAllowed()` aplicado en AUTO, modo 스킵 y simulación offline; modal `🎯 로드아웃 & 자동 시전 규칙` |
+| **3.3** Patrones de jefe + estados (B8/A1.7) | ✅ Hecho / Done | `makeMonster()` asigna `pattern` (escudo/회복/소환/격노), `CF.patternStep()` y `CF.statusTick()`; veneno · 화상 · 빙결 · 기절 aplicados por habilidades (jefes resisten la mitad); `monsterAct() + battleLoop()` comparten el turno enemigo entre batalla animada, 스킵 y simulación offline |
+
+**Pendiente / Pending:** **3.4** (inventario de equipo, P2 · L → 2 PRs) y las fases i18n **T2/T3**.
 
 **Lecciones / Lessons:** la suite pasó de 26 a **45 tests**; los cambios de UI se validan sin navegador con el arnés `vm` + DOM falso (`undefined`/`NaN` y handlers `onclick` inexistentes se detectan en CI).
 

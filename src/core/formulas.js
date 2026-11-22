@@ -201,6 +201,75 @@
     return { awayMs, capped: awayMs > capMs, battles, effectiveMs };
   }
 
+  // --- Statuses (3.3) ----------------------------------------------------
+  const STATUS_DEFS = {
+    poison: { turns: 3, pct: 5, label: '독' },
+    burn: { turns: 3, pct: 4, label: '화상' },
+    freeze: { turns: 1, pct: 0, label: '빙결' },
+    stun: { turns: 1, pct: 0, label: '기절' },
+  };
+
+  /**
+   * Roll a status effect for a skill hit. `r` in [0,1); `resist` (0..1) makes
+   * bosses shake off part of the chance.
+   */
+  function rollStatus(r, resist = 0) {
+    const roll = r * (1 + Math.max(0, resist));
+    if (roll < 0.12) return 'poison';
+    if (roll < 0.22) return 'burn';
+    if (roll < 0.27) return 'freeze';
+    if (roll < 0.32) return 'stun';
+    return null;
+  }
+
+  /** Adds/refreshes a status in a {kind: {turns, pct}} bag. */
+  function addStatus(statuses, kind) {
+    const def = STATUS_DEFS[kind];
+    if (!def) return statuses || {};
+    const bag = { ...(statuses || {}) };
+    const cur = bag[kind];
+    bag[kind] = { turns: Math.max(def.turns, cur ? cur.turns : 0), pct: def.pct };
+    return bag;
+  }
+
+  /**
+   * Ticks every status once: returns the damage dealt, the surviving statuses and
+   * whether the monster loses its turn (freeze / stun).
+   */
+  function statusTick(statuses, maxHp) {
+    const bag = statuses || {};
+    let damage = 0, skip = false;
+    const next = {};
+    for (const [kind, st] of Object.entries(bag)) {
+      if (!st || st.turns <= 0) continue;
+      damage += Math.floor((maxHp * (st.pct || 0)) / 100);
+      if (kind === 'freeze' || kind === 'stun') skip = true;
+      if (st.turns - 1 > 0) next[kind] = { ...st, turns: st.turns - 1 };
+    }
+    return { damage, statuses: next, skip };
+  }
+
+  // --- Boss patterns (3.3) ----------------------------------------------
+  /** shield every 4 turns, heal once below 50 %, enrage once below 30 %, summon every 5 turns. */
+  function patternStep(m) {
+    const p = m && m.pattern;
+    const hpPct = m && m.maxHp > 0 ? m.hp / m.maxHp : 1;
+    if (p === 'heal' && !m.healed && hpPct <= 0.5) return { action: 'heal', heal: Math.floor(m.maxHp * 0.08) };
+    if (p === 'enrage' && !m.enraged && hpPct <= 0.3) return { action: 'enrage' };
+    if (p === 'shield' && m.turn > 0 && m.turn % 5 === 0) return { action: 'shield', shield: Math.floor(m.maxHp * 0.08) };
+    if (p === 'summon' && m.turn > 0 && m.turn % 5 === 0 && (m.minions | 0) < 3) return { action: 'summon', minions: (m.minions | 0) + 1 };
+    return { action: 'attack' };
+  }
+
+  // --- Auto-cast rules (3.2) --------------------------------------------
+  /** rule: 'always' | 'bossOnly' | 'burst' (burst = only below 50 % monster HP). */
+  function autoCastAllowed(rule, m) {
+    if (!rule || rule === 'always') return true;
+    if (rule === 'bossOnly') return !!(m && m.isBoss);
+    if (rule === 'burst') return !!(m && m.maxHp > 0 && m.hp / m.maxHp <= 0.5);
+    return true;
+  }
+
   /**
    * Auto-farm stop check. Returns a reason code ('battles' | 'gold' | 'keys' | 'hp')
    * or null when the farm should keep going. `0` disables a condition.
@@ -259,6 +328,6 @@
 
   return {
     r1, dmgReduction, monsterTaken, heroTaken, trainCost, trainSum, trainGain, prestigeMult, rankUpCost, engraveCost, totalSteps,
-    isMaxed, equipStat, enhanceInfo, rollGrade, estimateDps, mergeSave, forgeGoalReached, offlineProgress, farmStopReason, DAILY_POOL, dailyDateKey, pickDailyQuests, streakNext,
+    isMaxed, equipStat, enhanceInfo, rollGrade, estimateDps, mergeSave, forgeGoalReached, offlineProgress, farmStopReason, STATUS_DEFS, rollStatus, addStatus, statusTick, patternStep, autoCastAllowed, DAILY_POOL, dailyDateKey, pickDailyQuests, streakNext,
   };
 });

@@ -258,6 +258,8 @@ function defaultState() {
     audio: { sfx: true, vol: 0.5 },
     lang: 'ko',
     prestige: { stars: 0 },
+    skillRules: {},
+    loadouts: [],
     battle: { inBattle: false, isRaid: false, raidTurnsLeft: 15, monster: null, turn: 1, isPlayerTurn: true },
   };
 }
@@ -352,6 +354,16 @@ function sanitize() {
   checkDailyReset();
   S.prestige = { ...def.prestige, ...(S.prestige || {}) };
   S.prestige.stars = Math.min(20, Math.max(0, S.prestige.stars | 0));
+  if (!S.skillRules || typeof S.skillRules !== 'object') S.skillRules = {};
+  for (const k of Object.keys(S.skillRules)) if (!['always', 'bossOnly', 'burst'].includes(S.skillRules[k])) delete S.skillRules[k];
+  if (!Array.isArray(S.loadouts)) S.loadouts = [];
+  S.loadouts = S.loadouts.filter(l => l && typeof l === 'object').slice(0, LOADOUT_SLOTS).map((l) => ({
+    name: String(l.name || '').slice(0, 18),
+    skills: Array.isArray(l.skills) ? l.skills.filter(n => typeof n === 'string').slice(0, 4) : [],
+    pet: typeof l.pet === 'string' ? l.pet : null,
+    speed: [1, 2, 'skip'].includes(l.speed) ? l.speed : 1,
+    rules: l.rules && typeof l.rules === 'object' ? { ...l.rules } : {},
+  }));
   if (typeof applyLang === 'function') applyLang();
   if (![1, 2, 'skip'].includes(S.battleSpeed)) S.battleSpeed = 1;
   if (!WORLDS.some(w => w.id === S.world)) S.world = 'normal';
@@ -504,6 +516,7 @@ function buyTrain(key, n) {
 
 // --- 몬스터 ---
 const curWorld = () => WORLDS.find(w => w.id === S.world) || WORLDS[0];
+const BOSS_PATTERNS = ['shield', 'heal', 'summon', 'enrage'];
 function makeMonster(stage) {
   const W = curWorld();
   const boss = stage % 10 === 0, elite = !boss && stage % 5 === 0, boss50 = stage % 50 === 0;
@@ -525,7 +538,14 @@ function makeMonster(stage) {
     [name, icon, type] = W.normal[(stage - 1) % W.normal.length];
   }
   const k = W.mult || 1, hp = Math.floor(base[0] * hpS * k);
-  return { name, icon, type, isBoss: boss, isElite: elite, is50: boss50, hp, maxHp: hp, atk: Math.floor(base[1] * atkS * k), def: Math.floor(base[2] * defS * k), gold: Math.floor(gold * k), bossWeapon: bossInfo?.[2], bossArmor: bossInfo?.[3] };
+  // 보스 패턴 (3.3): 10층 단위로 순환 — 보호막 · 회복 · 소환 · 격노
+  const pattern = boss ? BOSS_PATTERNS[(Math.floor(stage / 10) - 1) % BOSS_PATTERNS.length] : null;
+  return {
+    name, icon, type, isBoss: boss, isElite: elite, is50: boss50, hp, maxHp: hp,
+    atk: Math.floor(base[1] * atkS * k), def: Math.floor(base[2] * defS * k), gold: Math.floor(gold * k),
+    bossWeapon: bossInfo?.[2], bossArmor: bossInfo?.[3],
+    pattern, statuses: {}, shield: 0, healed: 0, enraged: 0, minions: 0,
+  };
 }
 const monsterTaken = (raw, mDef, ign = 0) => CF.monsterTaken(raw, mDef, ign);
 const heroTaken = (raw) => CF.heroTaken(raw, stats().def);
@@ -549,6 +569,83 @@ function basicAttack(mon) {
   sfx(crit ? 'crit' : 'hit');
   return { dmg: monsterTaken(raw, mon.def), crit };
 }
+// ----- 전투 헬퍼 (3.3): 상태이상 · 보호막 · 몬스터 턴 -----
+const STATUS_ICON = { poison: '☠️ 독', burn: '🔥 화상', freeze: '❄️ 빙결', stun: '💫 기절' };
+const STATUS_KEY = {
+  poison: 'ui.battle.statusPoison', burn: 'ui.battle.statusBurn',
+  freeze: 'ui.battle.statusFreeze', stun: 'ui.battle.statusStun',
+};
+const statusText = (k) => (STATUS_ICON[k] ? txt(STATUS_KEY[k], STATUS_ICON[k]) : k);
+function applyStatus(mon, kind) {
+  if (!kind) return;
+  mon.statuses = CF.addStatus(mon.statuses || {}, kind);
+}
+/** Player damage against the monster, honouring its shield. */
+function damageMonster(mon, dmg) {
+  let d = Math.max(0, Math.floor(dmg || 0)), absorbed = 0;
+  if ((mon.shield | 0) > 0) { absorbed = Math.min(mon.shield, d); mon.shield -= absorbed; d -= absorbed; }
+  mon.hp = Math.max(0, mon.hp - d);
+  return { absorbed, dealt: d };
+}
+/**
+ * One monster turn: statuses tick, boss pattern runs, then it attacks.
+ * Shared by the animated battle, the skip mode and the offline simulation.
+ */
+function monsterAct(mon, h, turn) {
+  const out = { dot: 0, skip: false, dmg: 0, breath: false, action: 'attack', heal: 0, shield: 0, minions: 0, enraged: false };
+  const tick = CF.statusTick(mon.statuses, mon.maxHp);
+  mon.statuses = tick.statuses;
+  if (tick.damage > 0) { mon.hp = Math.max(0, mon.hp - tick.damage); out.dot = tick.damage; }
+  if (mon.hp <= 0) return out;
+  if (tick.skip) { out.skip = true; return out; }
+  const step = CF.patternStep({ pattern: mon.pattern, turn, hp: mon.hp, maxHp: mon.maxHp, healed: mon.healed, enraged: mon.enraged, minions: mon.minions });
+  out.action = step.action;
+  if (step.action === 'shield') {
+    mon.shield = Math.min(Math.floor(mon.maxHp * 0.2), (mon.shield | 0) + step.shield);
+    out.shield = mon.shield; return out;
+  }
+  if (step.action === 'heal') { mon.healed = 1; mon.hp = Math.min(mon.maxHp, mon.hp + step.heal); out.heal = step.heal; return out; }
+  if (step.action === 'enrage') { mon.enraged = 1; mon.atk = Math.floor(mon.atk * 1.35); out.enraged = true; }
+  if (step.action === 'summon') { mon.minions = step.minions; mon.atk = Math.floor(mon.atk * 1.08); out.minions = step.minions; }
+  out.breath = mon.isBoss && turn % 3 === 0;
+  out.dmg = heroTaken(out.breath ? Math.floor(mon.atk * 1.65) : mon.atk);
+  h.hp = Math.max(0, h.hp - out.dmg);
+  return out;
+}
+/** Auto-cast rule of a skill (3.2). */
+const ruleOf = (sk) => (sk && S.skillRules && S.skillRules[sk.name]) || 'always';
+/** First equipped skill whose cooldown and rule allow it right now. */
+function pickSkill(mon) {
+  return S.hero.equippedSkills.map(ownedSkill)
+    .filter(Boolean)
+    .find(s => s.cooldown === 0 && CF.autoCastAllowed(ruleOf(s), mon)) || null;
+}
+/** Headless battle loop shared by skip mode and the offline simulation. */
+function battleLoop(mon, turn0, maxRounds = 80) {
+  const h = S.hero, st = stats();
+  const skills = h.equippedSkills.map(ownedSkill).filter(Boolean);
+  skills.forEach(k => { k.cooldown = 0; });
+  let turn = turn0 | 0, rounds = 0, dotKill = false;
+  while (mon.hp > 0 && h.hp > 0 && rounds < maxRounds) {
+    rounds++; turn++;
+    if (h.hp <= st.maxHp * 0.45 && h.potionCooldown <= 0) {
+      h.hp = Math.min(st.maxHp, h.hp + Math.floor(st.maxHp * st.potion)); h.potionCooldown = 3;
+    } else {
+      const sk = skills.find(k => k.cooldown === 0 && CF.autoCastAllowed(ruleOf(k), mon));
+      const res = sk ? castSkill(sk, mon) : basicAttack(mon);
+      if (res.status) applyStatus(mon, res.status);
+      damageMonster(mon, res.dmg);
+    }
+    if (mon.hp <= 0) break;
+    monsterAct(mon, h, turn);
+    if (mon.hp <= 0) { dotKill = true; break; }
+    if (h.hp <= 0) break;
+    if (h.potionCooldown > 0) h.potionCooldown--;
+    skills.forEach(k => { if (k.cooldown > 0) k.cooldown--; });
+  }
+  return { win: mon.hp <= 0, rounds, dotKill, turns: turn };
+}
+
 function castSkill(sk, mon) {
   const st = stats(), o = sk.specialOption || {}, ov = (t) => (o.type === t ? o.value : 0);
   let raw = Math.floor((sk.baseDmg + st.atk * sk.atkRatio) * (1 + (sk.level - 1) * 0.25) * (mon.isBoss ? 1 + st.bossDmg / 100 : 1) * (1 + st.skillAmp / 100) * st.runeMult);
@@ -561,7 +658,8 @@ function castSkill(sk, mon) {
   if (ov('lifesteal')) { heal = Math.max(1, Math.floor(dmg * ov('lifesteal') / 100)); heal = Math.min(heal, st.maxHp - S.hero.hp); S.hero.hp += heal; }
   const cdCut = ov('cdResetCh') && Math.random() * 100 < ov('cdResetCh');
   sk.cooldown = cdCut ? Math.max(1, sk.maxCooldown - 1) : sk.maxCooldown;
-  return { dmg, crit, heal, cdCut };
+  const status = CF.rollStatus(Math.random(), mon.isBoss ? 0.5 : 0);
+  return { dmg, crit, heal, cdCut, status };
 }
 function rollOption() {
   let r = Math.random() * 100, ri = 0;
@@ -1858,6 +1956,7 @@ function renderMenu(st) {
     mb(18, 'gold', txt('ui.menu.quests', '📜 튜토리얼 &amp; 일일 퀘스트') + (dailiesClaimable() ? '<span class="red-dot">!</span>' : ''), questsSubText(), 'openQuests()'),
     mb(19, '', txt('ui.menu.audio', '🔊 사운드 설정'), S.audio.sfx ? txt('ui.audio.onShort', '켜짐 · 볼륨 {v}%', { v: Math.round(S.audio.vol * 100) }) : txt('ui.audio.offShort', '꺼짐 (배터리 절약)'), 'openAudio()'),
     mb(20, '', txt('ui.menu.lang', '🌐 언어 / Language'), langStatusText(), 'openLang()'),
+    mb(22, 'cyan', txt('ui.loadout.menu', '🎯 로드아웃 & 자동 시전 규칙'), loadoutStatusText(), 'openLoadout()'),
     mb(21, 'purple', txt('ui.prestige.menu', '🌟 프레스티지 (환생)') + (canPrestige() ? '<span class="red-dot">!</span>' : ''), prestigeStatusText(), 'openPrestige()'),
     mb(0, 'red', '🚪 타이틀 화면으로 [ESC]', '게임 시작 화면으로 복귀', "switchScene('scene-title')", true),
   ].join('');
@@ -2761,8 +2860,8 @@ function runAuto() {
   if (!S.battle.inBattle || !S.battle.isPlayerTurn || !S.hero.autoCast || S.battleSpeed === 'skip') return;
   const h = S.hero, st = stats();
   if (h.hp <= st.maxHp * 0.45 && h.potionCooldown <= 0) return playerPotion();
-  const i = h.equippedSkills.findIndex(n => ownedSkill(n)?.cooldown === 0);
-  if (i >= 0) return playerSkill(i);
+  const sk = pickSkill(S.battle.monster);
+  if (sk) { const i = h.equippedSkills.indexOf(sk.name); if (i >= 0) return playerSkill(i); }
   playerAttack();
 }
 function beginPlayerAct() { if (!S.battle.inBattle || !S.battle.isPlayerTurn) return false; clearAuto(); S.battle.isPlayerTurn = false; renderDock(); return true; }
@@ -2771,9 +2870,10 @@ async function playerAttack() {
   const mon = S.battle.monster, r = basicAttack(mon);
   PD.emit('attack', { monster: mon, result: r });
   lunge(true); fxHeroSlash(S.hero.sword.grade, r.crit);
-  mon.hp = Math.max(0, mon.hp - r.dmg);
+  const hit = damageMonster(mon, r.dmg);
   if (r.crit) { FX.shake('battle-viewport', 150, 7); await FX.hitStop(hs(75)); }
-  floatText(r.crit ? `CRIT -${fmt(r.dmg)}!` : `-${fmt(r.dmg)}`, false, r.crit ? '#fffa65' : '#ff9f43');
+  floatText(r.crit ? `CRIT -${fmt(hit.dealt)}!` : `-${fmt(hit.dealt)}`, false, r.crit ? '#fffa65' : '#ff9f43');
+  if (hit.absorbed) floatText(`🛡️ ${fmt(hit.absorbed)} 흡수`, false, '#00cec9');
   log(r.crit ? `💥 치명타 베기! [${mon.name}]에게 ${fmt(r.dmg)} 피해!` : `🗡️ 모험가의 검격! [${mon.name}]에게 ${fmt(r.dmg)} 피해!`, r.crit ? 'crit' : 'hit');
   afterPlayer();
 }
@@ -2783,11 +2883,14 @@ async function playerSkill(i) {
   const mon = S.battle.monster, r = castSkill(sk, mon);
   PD.emit('skill', { skill: sk, monster: mon, result: r });
   lunge(true); heroBattle.play('skill'); fxSkill(sk, r.crit);
-  mon.hp = Math.max(0, mon.hp - r.dmg);
+  const hit = damageMonster(mon, r.dmg);
+  if (r.status) applyStatus(mon, r.status);
   FX.shake('battle-viewport', 180, 7); await FX.hitStop(hs(70));
-  floatText(`${r.crit ? 'CRIT ' : ''}-${fmt(r.dmg)}!`, false, r.crit ? '#fffa65' : '#c56cf0');
+  floatText(`${r.crit ? 'CRIT ' : ''}-${fmt(hit.dealt)}!`, false, r.crit ? '#fffa65' : '#c56cf0');
+  if (hit.absorbed) floatText(`🛡️ ${fmt(hit.absorbed)} 흡수`, false, '#00cec9');
   if (r.heal) floatText(`+${fmt(r.heal)} HP`, true, '#2ed573');
-  log(`✨ ${sk.icon} [${sk.name} Lv.${sk.level}]${r.crit ? ' 치명타!' : ''} ${fmt(r.dmg)} 피해!${r.heal ? ` (흡혈 +${fmt(r.heal)})` : ''}${r.cdCut ? ' [쿨감!]' : ''}`, 'skill');
+  if (r.status) floatText(statusText(r.status), false, '#2ed573');
+  log(`✨ ${sk.icon} [${sk.name} Lv.${sk.level}]${r.crit ? ' 치명타!' : ''} ${fmt(hit.dealt)} 피해!${r.heal ? ` (흡혈 +${fmt(r.heal)})` : ''}${r.cdCut ? ' [쿨감!]' : ''}${r.status ? ` [${statusText(r.status)}]` : ''}`, 'skill');
   afterPlayer();
 }
 function playerPotion() {
@@ -2865,13 +2968,25 @@ function afterPlayer() {
 }
 async function enemyTurn() {
   if (!S.battle.inBattle) return;
-  const mon = S.battle.monster, h = S.hero, breath = mon.isBoss && S.battle.turn % 3 === 0;
-  const ev = PD.emit('enemyAttack', { monster: mon, breath, dmg: heroTaken(breath ? Math.floor(mon.atk * 1.65) : mon.atk) }), dmg = ev.dmg;
+  const mon = S.battle.monster, h = S.hero;
+  const act = monsterAct(mon, h, S.battle.turn);
   lunge(false);
-  if (breath) { fxBossBreath(); FX.shake('battle-viewport', 220, 9); await FX.hitStop(hs(80)); log(`🔥 [${mon.name}]의 화염 브레스! ${fmt(dmg)}의 치명적 피해!`, 'enemy'); }
-  else { fxEnemyHit(); log(`👹 [${mon.name}]의 반격! ${fmt(dmg)} 피해! (방어 경감 적용)`, 'enemy'); }
-  h.hp = Math.max(0, h.hp - dmg);
-  floatText(`-${fmt(dmg)}`, true, '#ff4757');
+  if (act.dot) { floatText(`-${fmt(act.dot)}`, false, '#2ed573'); log(`☠️ [${mon.name}] 상태이상 피해 ${fmt(act.dot)}!`, 'skill'); }
+  if (mon.hp <= 0) { refreshAll(); return victory(); }
+  if (act.skip) {
+    log(`❄️ [${mon.name}] 빙결/기절로 이번 턴을 넘겼습니다!`, 'win');
+  } else {
+    if (act.shield) log(`[${mon.name}] ${txt('ui.battle.shield', '🛡️ 보호막 {n} 흡수', { n: fmt(act.shield) })}`, 'enemy');
+    if (act.heal) log(`[${mon.name}] ${txt('ui.battle.patternHeal', '💚 자가 회복 +{n}', { n: fmt(act.heal) })}`, 'enemy');
+    if (act.enraged) log(`[${mon.name}] ${txt('ui.battle.patternEnrage', '😡 격노! 공격력 +35%')}`, 'enemy');
+    if (act.minions) log(`[${mon.name}] ${txt('ui.battle.patternSummon', '👥 하수인 소환 {n}/3', { n: act.minions })}`, 'enemy');
+    if (act.dmg > 0) {
+      PD.emit('enemyAttack', { monster: mon, breath: act.breath, dmg: act.dmg });
+      if (act.breath) { fxBossBreath(); FX.shake('battle-viewport', 220, 9); await FX.hitStop(hs(80)); log(`🔥 [${mon.name}]의 화염 브레스! ${fmt(act.dmg)}의 치명적 피해!`, 'enemy'); }
+      else { fxEnemyHit(); log(`👹 [${mon.name}]의 반격! ${fmt(act.dmg)} 피해! (방어 경감 적용)`, 'enemy'); }
+      floatText(`-${fmt(act.dmg)}`, true, '#ff4757');
+    }
+  }
   if (h.hp <= 0) { refreshAll(); return defeat(); }
   S.battle.turn++; if (h.potionCooldown > 0) h.potionCooldown--;
   h.skills.forEach(s => { if (s.cooldown > 0) s.cooldown--; });
@@ -2893,18 +3008,10 @@ async function enemyTurn() {
 function skipResolve() {
   if (!S.battle.inBattle || !speedUnlocked() || S.battleSpeed !== 'skip') return;
   clearAuto();
-  const h = S.hero, mon = S.battle.monster; let rounds = 0;
-  while (rounds < 250 && mon.hp > 0 && h.hp > 0) {
-    rounds++; const st = stats();
-    if (h.hp <= st.maxHp * 0.45 && h.potionCooldown <= 0) { h.hp += Math.min(st.maxHp - h.hp, Math.floor(st.maxHp * st.potion)); h.potionCooldown = 3; }
-    else { const sk = h.equippedSkills.map(ownedSkill).find(s => s && s.cooldown === 0); mon.hp = Math.max(0, mon.hp - (sk ? castSkill(sk, mon) : basicAttack(mon)).dmg); }
-    if (mon.hp <= 0) break;
-    const breath = mon.isBoss && S.battle.turn % 3 === 0;
-    h.hp = Math.max(0, h.hp - heroTaken(breath ? Math.floor(mon.atk * 1.65) : mon.atk));
-    if (h.hp <= 0) break;
-    S.battle.turn++; if (h.potionCooldown > 0) h.potionCooldown--; h.skills.forEach(s => { if (s.cooldown > 0) s.cooldown--; });
-  }
-  log(`⚡ [스킵 결착] ${rounds}턴 만에 고속 전투 종료!`, 'info');
+  const mon = S.battle.monster;
+  const r = battleLoop(mon, S.battle.turn, 250);
+  S.battle.turn = r.turns;
+  log(`⚡ [스킵 결착] ${r.rounds}턴 만에 고속 전투 종료!${r.dotKill ? ' (상태이상 마무리)' : ''}`, 'info');
   refreshAll();
   mon.hp <= 0 ? victory() : defeat();
 }
@@ -2924,6 +3031,85 @@ function raidTimeOver() {
     <div style="font-size:.76rem;color:var(--sub)">장비 승급, 룬 합성, 펫 성장으로 화력을 더욱 끌어올려 보세요!</div>
   `), 800);
 }
+
+// ===== 로드아웃 & 자동 시전 규칙 (3.2) =====
+const LOADOUT_SLOTS = 3;
+const RULE_LIST = ['always', 'bossOnly', 'burst'];
+const ruleLabel = (r) => ({
+  always: txt('ui.loadout.ruleAlways', '항상'),
+  bossOnly: txt('ui.loadout.ruleBoss', '보스전만'),
+  burst: txt('ui.loadout.ruleBurst', '마무리(50%↓)'),
+}[r] || r);
+const RULE_HINT = {
+  always: '쿨이 돌 때마다 자동 시전',
+  bossOnly: '보스/정예전에서만 시전 (일반 몬스터에는 아낌)',
+  burst: '몬스터 HP가 50% 이하일 때만 시전 (마무리 폭딜)',
+};
+function setSkillRule(name, rule) {
+  if (!RULE_LIST.includes(rule)) return;
+  S.skillRules[name] = rule; saveNow();
+  if (isOpen('loadout')) refreshModal('loadout', loadoutTitle(), loadoutHtml());
+  refreshAll();
+}
+function loadoutSlot(i) {
+  if (!S.loadouts[i]) S.loadouts[i] = { name: `프리셋 ${i + 1}`, skills: [], pet: null, speed: 1, rules: {} };
+  return S.loadouts[i];
+}
+function saveLoadout(i) {
+  const h = S.hero, slot = loadoutSlot(i);
+  slot.skills = h.equippedSkills.slice(0, 4);
+  slot.pet = h.pets?.equipped || null;
+  slot.speed = S.battleSpeed;
+  slot.rules = { ...S.skillRules };
+  saveNow();
+  if (isOpen('loadout')) refreshModal('loadout', loadoutTitle(), loadoutHtml());
+  refreshAll();
+  toast(txt('ui.loadout.saved', '💾 {name} 슬롯에 현재 세팅을 저장했습니다.', { name: slot.name }), 'ok');
+}
+function applyLoadout(i) {
+  const l = S.loadouts[i]; if (!l) return false;
+  const owned = new Set(S.hero.skills.map(s => s.name));
+  const next = (l.skills || []).filter(n => owned.has(n)).slice(0, 4);
+  if (next.length) S.hero.equippedSkills = next;
+  if (S.hero.pets) S.hero.pets.equipped = l.pet && PET_BY_ID[l.pet] && S.hero.pets.owned[l.pet] ? l.pet : null;
+  S.battleSpeed = [1, 2, 'skip'].includes(l.speed) ? l.speed : 1;
+  S.skillRules = { ...(l.rules || {}) };
+  saveNow(); refreshAll();
+  if (isOpen('loadout')) refreshModal('loadout', loadoutTitle(), loadoutHtml());
+  toast(txt('ui.loadout.applied', '▶ {name} 프리셋을 적용했습니다.', { name: l.name }), 'ok');
+  return true;
+}
+const loadoutTitle = () => txt('ui.loadout.title', '🎯 로드아웃 & 자동 시전 규칙');
+function loadoutStatusText() {
+  const used = S.hero.equippedSkills.filter(n => (S.skillRules[n] || 'always') !== 'always').length;
+  return txt('ui.loadout.menuSub', '프리셋 {n}개 · 규칙 {r}개 적용', { n: S.loadouts.filter(Boolean).length, r: used });
+}
+function loadoutHtml() {
+  const h = S.hero;
+  const slots = Array.from({ length: LOADOUT_SLOTS }, (_, i) => {
+    const l = S.loadouts[i];
+    const info = l
+      ? `${l.name} · ${(l.skills || []).length || 0}스킬 · ${l.pet && PET_BY_ID[l.pet] ? PET_BY_ID[l.pet].icon + ' ' + PET_BY_ID[l.pet].name : '펫 없음'} · ${l.speed === 'skip' ? '⚡스킵' : '×' + l.speed}`
+      : txt('ui.loadout.empty', '비어 있음 (저장하면 현재 세팅이 들어갑니다)');
+    return `<div class="mrow"><div class="l"><b>${i + 1}. ${info}</b>${l ? `<small style="color:var(--sub)">${(l.skills || []).join(' · ') || '—'}</small>` : ''}</div>
+      <div class="bts"><button class="btn mini cyan" onclick="saveLoadout(${i})">💾</button>
+      <button class="btn mini gold" ${l ? '' : 'disabled'} onclick="applyLoadout(${i})">▶</button></div></div>`;
+  }).join('');
+  const rules = h.equippedSkills.map((name) => {
+    const cur = S.skillRules[name] || 'always';
+    const sk = ownedSkill(name);
+    const bts = RULE_LIST.map(r => `<button class="btn mini ${cur === r ? 'green' : ''}" onclick="setSkillRule('${name.replace(/'/g, "\'")}', '${r}')">${ruleLabel(r)}</button>`).join('');
+    return `<div class="mrow"><div class="l"><b>${sk ? sk.icon + ' ' + name : name}</b><small style="color:var(--sub)">${RULE_HINT[cur]}</small></div><div class="bts">${bts}</div></div>`;
+  }).join('');
+  return `<div class="strip"><span>${txt('ui.loadout.equipped', '장착 스킬')} <b>${h.equippedSkills.length}/4</b></span><span>${txt('ui.loadout.auto', '자동 시전')} <b style="color:${h.autoCast ? 'var(--green)' : 'var(--sub)'}">${h.autoCast ? 'ON' : 'OFF'}</b></span><span>${txt('ui.loadout.speed', '배속')} <b>${S.battleSpeed === 'skip' ? '⚡' : '×' + S.battleSpeed}</b></span></div>
+  <div class="ptitle" style="margin:0">💾 ${txt('ui.loadout.presets', '프리셋')}</div>
+  <div class="mlist">${slots}</div>
+  <div class="ptitle" style="margin:0">⚙️ ${txt('ui.loadout.rules', '스킬별 자동 시전 규칙')}</div>
+  <div class="mlist">${rules || `<small style="color:var(--sub)">${txt('ui.loadout.noSkills', '장착된 스킬이 없습니다.')}</small>`}</div>
+  <small style="color:var(--sub)">${txt('ui.loadout.note', '규칙은 AUTO 모드·스킵 모드·오프라인 시뮬레이션에 모두 적용됩니다. 프리셋은 스킬 4개·펫·배속·규칙을 한 번에 저장/적용합니다.')}</small>
+  <button class="btn full" onclick="closeModal('loadout')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function openLoadout() { openModal('loadout', 580, loadoutTitle(), loadoutHtml()); }
 
 // ===== 프레스티지 (환생) =====
 const PRESTIGE_UNLOCK = 100, PRESTIGE_MAX = 20;
@@ -3211,24 +3397,8 @@ function openQuests() { openModal('quests', 560, QT, questsHtml()); }
 function simOneBattle(stage) {
   const mon = makeMonster(stage), h = S.hero, st = stats();
   h.hp = st.maxHp; h.potionCooldown = 0;
-  const skills = h.equippedSkills.map(ownedSkill).filter(Boolean);
-  skills.forEach(k => k.cooldown = 0);
-  let turns = 0;
-  while (mon.hp > 0 && h.hp > 0 && turns < 80) {
-    turns++;
-    if (h.hp <= st.maxHp * 0.45 && h.potionCooldown <= 0) {
-      h.hp = Math.min(st.maxHp, h.hp + Math.floor(st.maxHp * st.potion)); h.potionCooldown = 3;
-    } else {
-      const sk = skills.find(k => k.cooldown === 0);
-      mon.hp = Math.max(0, mon.hp - (sk ? castSkill(sk, mon) : basicAttack(mon)).dmg);
-    }
-    if (mon.hp <= 0) break;
-    const breath = mon.isBoss && turns % 3 === 0;
-    h.hp = Math.max(0, h.hp - heroTaken(breath ? Math.floor(mon.atk * 1.65) : mon.atk));
-    if (h.potionCooldown > 0) h.potionCooldown--;
-    skills.forEach(k => { if (k.cooldown > 0) k.cooldown--; });
-  }
-  return { win: mon.hp <= 0, gold: Math.floor(mon.gold * (1 + st.goldPct / 100)) };
+  const r = battleLoop(mon, 0, 80);
+  return { win: r.win, gold: Math.floor(mon.gold * (1 + st.goldPct / 100)), rounds: r.rounds };
 }
 let OFFLINE = null;
 function runOfflineProgress() {

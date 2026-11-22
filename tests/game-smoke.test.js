@@ -372,10 +372,114 @@ test('3.5 — the baseline build wins floor 1 and loses floor 200 (balance guard
   assert.equal(lateWins, 0, 'a starter build cannot clear floor 200');
 });
 
+test('3.2 — bossOnly and burst rules gate auto-cast, in battle and in the simulation', () => {
+  const g = boot();
+  g.run(`load();
+    S.hero.equippedSkills = ['화염 강타'];
+    ownedSkill('화염 강타').cooldown = 0;
+    S.skillRules = { '화염 강타': 'bossOnly' };
+    NORMAL = pickSkill(makeMonster(3)) ? 'cast' : 'skip';
+    BOSS = pickSkill(makeMonster(10)) ? 'cast' : 'skip';
+    S.skillRules = { '화염 강타': 'burst' };
+    const m = makeMonster(3);
+    FULL = pickSkill(m) ? 'cast' : 'skip';
+    m.hp = Math.floor(m.maxHp * 0.3);
+    LOW = pickSkill(m) ? 'cast' : 'skip';
+    S.skillRules = {};
+    OPEN = pickSkill(makeMonster(3)) ? 'cast' : 'skip';`);
+  assert.equal(g.run('NORMAL'), 'skip', 'bossOnly does not fire on a normal monster');
+  assert.equal(g.run('BOSS'), 'cast', 'bossOnly fires on a boss');
+  assert.equal(g.run('FULL'), 'skip', 'burst waits for the second half');
+  assert.equal(g.run('LOW'), 'cast', 'burst fires below 50 %');
+  assert.equal(g.run('OPEN'), 'cast', 'no rule = always');
+});
+
+test('3.2 — loadouts store and restore skills, speed and rules in one click', () => {
+  const g = boot();
+  g.run(`load();
+    S.hero.skills.push({ ...S.hero.skills[0], name: '테스트 스킬' });
+    S.hero.equippedSkills = ['화염 강타', '테스트 스킬'];
+    S.battleSpeed = 2;
+    S.skillRules = { '화염 강타': 'bossOnly' };
+    saveLoadout(0);
+    SLOT = { skills: S.loadouts[0].skills.slice(), speed: S.loadouts[0].speed, rule: S.loadouts[0].rules['화염 강타'] };
+    S.hero.equippedSkills = ['화염 강타'];
+    S.battleSpeed = 1;
+    S.skillRules = {};
+    applyLoadout(0);
+    AFTER = { skills: S.hero.equippedSkills.slice(), speed: S.battleSpeed, rule: S.skillRules['화염 강타'] };`);
+  const expected = JSON.stringify({ skills: ['화염 강타', '테스트 스킬'], speed: 2, rule: 'bossOnly' });
+  assert.equal(JSON.stringify(g.run('SLOT')), expected);
+  assert.equal(JSON.stringify(g.run('AFTER')), expected);
+
+  // a preset whose skills are gone cannot empty the bar
+  g.run(`S.loadouts[1] = { name: 'old', skills: ['없는 스킬'], pet: null, speed: 1, rules: {} };
+    applyLoadout(1);`);
+  assert.equal(g.run('S.hero.equippedSkills.length'), 2, 'stale presets keep the current bar');
+  // presets survive a reload
+  g.run('saveNow(); load();');
+  assert.equal(g.run("S.loadouts[0].skills.join('|')"), '화염 강타|테스트 스킬');
+});
+
+test('3.3 — bosses get a pattern, shields absorb and statuses tick', () => {
+  const g = boot();
+  g.run('load()');
+  assert.equal(g.run('makeMonster(5).pattern'), null, 'elites have no pattern');
+  assert.equal(g.run('makeMonster(10).pattern'), 'shield');
+  assert.equal(g.run('makeMonster(20).pattern'), 'heal');
+  assert.equal(g.run('makeMonster(30).pattern'), 'summon');
+  assert.equal(g.run('makeMonster(40).pattern'), 'enrage');
+
+  const absorb = g.run(`(() => { const mon = makeMonster(10); mon.shield = 100; mon.hp = 5000; mon.maxHp = 5000;
+    const r = damageMonster(mon, 60); return { ...r, hp: mon.hp, shield: mon.shield }; })()`);
+  assert.equal(JSON.stringify(absorb), JSON.stringify({ absorbed: 60, dealt: 0, hp: 5000, shield: 40 }), 'the shield eats the hit first');
+  const spill = g.run(`(() => { const mon = makeMonster(10); mon.shield = 20; mon.hp = 5000; mon.maxHp = 5000;
+    const r = damageMonster(mon, 60); return { ...r, hp: mon.hp, shield: mon.shield }; })()`);
+  assert.equal(JSON.stringify(spill), JSON.stringify({ absorbed: 20, dealt: 40, hp: 4960, shield: 0 }));
+
+  const dot = g.run(`(() => { const mon = makeMonster(3); mon.hp = 100; mon.maxHp = 1000;
+    mon.statuses = CF.addStatus({}, 'poison');
+    const h = S.hero; h.hp = stats().maxHp;
+    const act = monsterAct(mon, h, 1); return { dot: act.dot, hp: mon.hp }; })()`);
+  assert.equal(JSON.stringify(dot), JSON.stringify({ dot: 50, hp: 50 }), 'poison deals 5 % of max HP');
+
+  const frozen = g.run(`(() => { const mon = makeMonster(3); mon.hp = 1000; mon.maxHp = 1000;
+    mon.statuses = CF.addStatus({}, 'freeze');
+    const h = S.hero; h.hp = stats().maxHp; const before = h.hp;
+    const act = monsterAct(mon, h, 1); return { skip: act.skip, dmg: act.dmg, untouched: h.hp === before }; })()`);
+  assert.equal(JSON.stringify(frozen), JSON.stringify({ skip: true, dmg: 0, untouched: true }), 'freeze costs the monster its turn');
+});
+
+test('3.3 — the shared battle loop resolves statuses and is used by skip and offline', () => {
+  const g = boot();
+  g.run('load()');
+  const res = g.run(`(() => {
+    // a monster the hero can barely scratch (huge DEF) but the poison can finish
+    const mon = makeMonster(1); mon.def = 1e9; mon.hp = 40; mon.maxHp = 1000;
+    mon.statuses = CF.addStatus({}, 'poison');
+    const h = S.hero; h.hp = stats().maxHp;
+    return battleLoop(mon, 0, 20); })()`);
+  assert.equal(res.dotKill, true, 'dotKill is reported when the poison finishes the monster');
+  assert.equal(res.win, true);
+
+  const sim = g.run('simOneBattle(1)');
+  assert.equal(sim.win, true, 'floor 1 is winnable through the shared loop');
+  assert.ok(sim.rounds >= 1, 'rounds are reported');
+
+  // the boss heal pattern is applied inside the loop (hp goes up instead of down)
+  const heal = g.run(`(() => {
+    const mon = makeMonster(20); mon.maxHp = 100000; mon.hp = 40000; mon.pattern = 'heal';
+    const h = S.hero; h.hp = stats().maxHp;
+    const act = monsterAct(mon, h, 1);
+    return { action: act.action, heal: act.heal, hp: mon.hp, healed: mon.healed }; })()`);
+  assert.equal(heal.action, 'heal');
+  assert.ok(heal.hp > 40000 && heal.healed === 1);
+});
+
 test('sprint 2 UI — every modal renders cleanly and its handlers exist', () => {
   const g = boot();
   g.run('load()');
-  for (const expr of ['afHtml()', 'questsHtml()', 'audioHtml()', 'prestigeHtml()']) {
+  for (const expr of ['afHtml()', 'questsHtml()', 'audioHtml()', 'prestigeHtml()', 'loadoutHtml()']) {
     const html = g.run(expr);
     assert.ok(html && html.length > 80, `${expr} renders`);
     assert.ok(!/undefined|NaN/.test(html), `${expr} has no undefined/NaN`);
