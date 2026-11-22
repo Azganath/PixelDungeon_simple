@@ -99,7 +99,10 @@ test('1.1 — chest upgrade keeps forge progress', () => {
   assert.equal(hero.sword.grade, '전설');
   assert.equal(hero.sword.enhanceLevel, 7, 'enhancement level must carry over');
   assert.equal(hero.sword.pityBonus, 12.5, 'pity bonus must carry over');
-  assert.ok(hero.gold > 0, 'previous gear is still refunded');
+  assert.equal(hero.gold, 0, '3.4a: the old piece is stored, not auto-sold');
+  assert.equal(g.run('S.inventory.swords.length'), 1, 'the previous sword goes to the inventory');
+  assert.equal(g.run("S.inventory.swords[0].grade"), '일반');
+  assert.match(g.run('RES.banner'), /인벤토리 보관/);
   assert.match(g.run('RES.banner'), /강화 이전/);
 });
 
@@ -474,6 +477,69 @@ test('3.3 — the shared battle loop resolves statuses and is used by skip and o
     return { action: act.action, heal: act.heal, hp: mon.hp, healed: mon.healed }; })()`);
   assert.equal(heal.action, 'heal');
   assert.ok(heal.hp > 40000 && heal.healed === 1);
+});
+
+test('3.4a — same-grade drops are stored, full bags fall back to selling', () => {
+  const g = boot();
+  g.run(`load(); S.hero.gold = 0; S.inventory = { swords: [], armors: [] };`);
+  const origRoll = CF.rollGrade;
+  CF.rollGrade = () => '일반';
+  try { g.run("RES = openOne('sword')"); } finally { CF.rollGrade = origRoll; }
+  assert.equal(g.run('S.inventory.swords.length'), 1, 'the drop is kept');
+  assert.equal(g.run('S.hero.gold'), 0, 'nothing was sold');
+  assert.match(g.run('RES.tag'), /인벤토리 보관/);
+  assert.match(g.run('RES.tag'), /1\/20/);
+
+  // 20 slots: the 21st drop is sold with a warning
+  g.run(`for (let i = S.inventory.swords.length; i < 20; i++) addToInventory('sword', newEquip('sword', '일반'));
+    FILLED = invCount('sword');`);
+  assert.equal(g.run('FILLED'), 20);
+  CF.rollGrade = () => '일반';
+  try { g.run("FULL_RES = openOne('sword')"); } finally { CF.rollGrade = origRoll; }
+  assert.equal(g.run("invCount('sword')"), 20, 'the bag stays capped');
+  assert.ok(g.run('S.hero.gold') > 0, 'the overflow is sold');
+  assert.match(g.run('FULL_RES.banner'), /가득/);
+});
+
+test('3.4a — equip and sell from the inventory keep the forge progress', () => {
+  const g = boot();
+  g.run(`load();
+    S.hero.sword = { name: '현재검', grade: '영웅', baseStat: 40, sellPrice: 260, enhanceLevel: 5, starTier: 0, starCount: 0, pityBonus: 3 };
+    S.inventory = { swords: [], armors: [] };
+    const stored = { name: '보관검', grade: '전설', baseStat: 90, sellPrice: 400, enhanceLevel: 0, starTier: 0, starCount: 0, pityBonus: 0 };
+    ENTRY = addToInventory('sword', stored);
+    ID = ENTRY.id;
+    EQ = equipFromInventory('sword', ID);`);
+  assert.equal(g.run('EQ.ok'), true);
+  assert.equal(g.run('S.hero.sword.grade'), '전설', 'the stored piece is equipped');
+  assert.equal(g.run('S.hero.sword.enhanceLevel'), 5, 'forge progress follows the player');
+  assert.equal(g.run('invCount("sword")'), 1, 'the previous sword comes back to the bag');
+  assert.equal(g.run("S.inventory.swords[0].name"), '현재검');
+  assert.equal(g.run('S.hero.sword.id'), undefined, 'equipped gear carries no bag id');
+
+  // favourites cannot be sold; regular pieces can
+  g.run(`S.inventory.swords[0].fav = true; PROTECTED = sellInventoryItem('sword', S.inventory.swords[0].id);`);
+  assert.equal(g.run('PROTECTED'), 0);
+  assert.equal(g.run('invCount("sword")'), 1);
+  g.run(`S.inventory.swords[0].fav = false; S.hero.gold = 0; SOLD = sellInventoryItem('sword', S.inventory.swords[0].id);`);
+  assert.ok(g.run('SOLD') > 0);
+  assert.equal(g.run('invCount("sword")'), 0);
+  assert.equal(g.run('S.hero.gold'), g.run('SOLD'));
+});
+
+test('3.4a — old saves migrate to an empty inventory and junk entries are dropped', () => {
+  const g = boot();
+  g.run(`load(); delete S.inventory; sanitize();`);
+  assert.equal(g.run('invCount("sword")'), 0);
+  assert.equal(g.run('invCount("armor")'), 0);
+
+  g.run(`S.inventory = { swords: [null, { name: 'ok', grade: '영웅' }, { name: 'bad', grade: '없는등급' }], armors: 'nope' };
+    for (let i = 0; i < 30; i++) S.inventory.swords.push({ name: 'x' + i, grade: '일반' });
+    sanitize();`);
+  assert.equal(g.run("invCount('armor')"), 0, 'corrupt containers are reset');
+  assert.equal(g.run("invCount('sword')"), 20, 'the bag is capped at 20');
+  assert.equal(g.run("S.inventory.swords[0].name"), 'ok', 'valid entries survive, junk is gone');
+  assert.equal(g.run("S.inventory.swords.every(e => !!e.id)"), true, 'every entry gets an id');
 });
 
 test('sprint 2 UI — every modal renders cleanly and its handlers exist', () => {

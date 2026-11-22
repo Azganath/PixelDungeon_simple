@@ -85,7 +85,10 @@
 | **3.2** Loadouts + reglas de auto-cast (B4) | ✅ Hecho / Done | `S.loadouts` (3 presets: habilidades · mascota · velocidad · reglas), `S.skillRules` (`always`/`bossOnly`/`burst`), `CF.autoCastAllowed()` aplicado en AUTO, modo 스킵 y simulación offline; modal `🎯 로드아웃 & 자동 시전 규칙` |
 | **3.3** Patrones de jefe + estados (B8/A1.7) | ✅ Hecho / Done | `makeMonster()` asigna `pattern` (escudo/회복/소환/격노), `CF.patternStep()` y `CF.statusTick()`; veneno · 화상 · 빙결 · 기절 aplicados por habilidades (jefes resisten la mitad); `monsterAct() + battleLoop()` comparten el turno enemigo entre batalla animada, 스킵 y simulación offline |
 
-**Pendiente / Pending:** **3.4** (inventario de equipo, P2 · L → 2 PRs) y las fases i18n **T2/T3**.
+| **3.4a** Inventario de equipo — datos (B5) | ✅ Hecho / Done | `S.inventory = {swords:[], armors:[]}` (20 por tipo, ids y favoritos), los drops ya no se venden solos: suben al inventario y el equipo anterior se guarda; `equipFromInventory()` mueve la forja (1.1) y devuelve la pieza anterior a la bolsa; `sellInventoryItem()` protege favoritos; `sanitize()` migra saves viejos, corta a 20 y descarta entradas corruptas |
+| **3.4b** Inventario de equipo — UI (B5) | ⏳ Pendiente / Pending | Modal con comparar (Δ ATK/DEF/DPS), equipar, vender y marcar favorito |
+
+**Pendiente / Pending:** **3.4b** (UI del inventario) y las fases i18n **T2/T3**.
 
 **Lecciones / Lessons:** la suite pasó de 26 a **45 tests**; los cambios de UI se validan sin navegador con el arnés `vm` + DOM falso (`undefined`/`NaN` y handlers `onclick` inexistentes se detectan en CI).
 

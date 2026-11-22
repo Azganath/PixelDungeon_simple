@@ -260,6 +260,7 @@ function defaultState() {
     prestige: { stars: 0 },
     skillRules: {},
     loadouts: [],
+    inventory: { swords: [], armors: [] },
     battle: { inBattle: false, isRaid: false, raidTurnsLeft: 15, monster: null, turn: 1, isPlayerTurn: true },
   };
 }
@@ -356,6 +357,23 @@ function sanitize() {
   S.prestige.stars = Math.min(20, Math.max(0, S.prestige.stars | 0));
   if (!S.skillRules || typeof S.skillRules !== 'object') S.skillRules = {};
   for (const k of Object.keys(S.skillRules)) if (!['always', 'bossOnly', 'burst'].includes(S.skillRules[k])) delete S.skillRules[k];
+  S.inventory = { swords: [], armors: [], ...(S.inventory || {}) };
+  for (const k of ['swords', 'armors']) {
+    if (!Array.isArray(S.inventory[k])) S.inventory[k] = [];
+    S.inventory[k] = S.inventory[k]
+      .filter(e => e && typeof e === 'object' && typeof e.name === 'string' && GRADES.includes(e.grade))
+      .slice(0, INV_MAX)
+      .map(e => ({
+        name: e.name, grade: e.grade,
+        baseStat: e.baseStat | 0, sellPrice: e.sellPrice | 0,
+        enhanceLevel: Math.min(10, Math.max(0, e.enhanceLevel | 0)),
+        starTier: Math.min(4, Math.max(0, e.starTier | 0)),
+        starCount: Math.min(5, Math.max(0, e.starCount | 0)),
+        pityBonus: Math.max(0, Number(e.pityBonus) || 0),
+        id: typeof e.id === 'string' && e.id ? e.id : invItemId(),
+        fav: !!e.fav,
+      }));
+  }
   if (!Array.isArray(S.loadouts)) S.loadouts = [];
   S.loadouts = S.loadouts.filter(l => l && typeof l === 'object').slice(0, LOADOUT_SLOTS).map((l) => ({
     name: String(l.name || '').slice(0, 18),
@@ -717,20 +735,35 @@ function openOne(type) {
     unlockCodex(cat, name);
     const statText = `${type === 'sword' ? '기본 공격력' : '기본 방어력'} +${type === 'sword' ? EQUIP[grade].sBase : EQUIP[grade].aBase}`;
     if (rankOf(grade) > rankOf(h[type].grade)) {
-      const oldEquip = h[type], old = oldEquip.sellPrice || 0;
-      h.gold += old;
+      const oldEquip = h[type];
+      const stored = addToInventory(type, oldEquip);
+      const soldGold = stored ? 0 : (oldEquip.sellPrice || 0);
+      if (!stored) h.gold += soldGold;
       // 강화/초월 진행도를 새 장비로 이전한다 (플레이어의 단조 진행도 손실 방지)
       const carried = { enhanceLevel: oldEquip.enhanceLevel | 0, starTier: oldEquip.starTier | 0, starCount: oldEquip.starCount | 0, pityBonus: oldEquip.pityBonus || 0 };
       const beforeTxt = enhanceStatus(oldEquip);
       withHpDelta(() => { const fresh = newEquip(type, grade, name); Object.assign(fresh, carried); h[type] = fresh; });
       const afterTxt = enhanceStatus(h[type]);
       const keptTxt = CF.totalSteps(carried) > 0 ? ` · 강화 이전 ${beforeTxt} → ${afterTxt}` : '';
-      return { kind: type, grade, name, statText, tag: `✨ 장착! (강화 유지 ${afterTxt})`, tagType: 'equip', banner: `더 높은 등급의 ${word}을 획득하여 즉시 장착! (이전 장비 판매 +${old}G)${keptTxt}`.replace('방어구을', '방어구를'), gold: old, keys: 0 };
+      const whereTxt = stored ? '이전 장비 인벤토리 보관' : `이전 장비 판매 +${soldGold}G (인벤토리 가득 참)`;
+      return {
+        kind: type, grade, name, statText, tag: `✨ 장착! (강화 유지 ${afterTxt})`, tagType: 'equip',
+        banner: `더 높은 등급의 ${word}을 획득하여 즉시 장착! (${whereTxt})${keptTxt}`.replace('방어구을', '방어구를'),
+        gold: soldGold, keys: 0,
+      };
+    }
+    // 같은/낮은 등급: 인벤토리에 보관하고, 가득 찼을 때만 자동 판매
+    if (addToInventory(type, newEquip(type, grade, name))) {
+      return {
+        kind: type, grade, name, statText, tag: `🎒 인벤토리 보관 (${invCount(type)}/${INV_MAX})`, tagType: 'equip',
+        banner: `${type === 'sword' ? '장비' : '방어구'}를 인벤토리에 보관했습니다. 나중에 비교하고 장착하거나 판매하세요.`,
+        gold: 0, keys: 0,
+      };
     }
     const rw = SELL[grade]; grantReward(rw);
     return rw.keys
-      ? { kind: type, grade, name, statText, tag: `🗝️ 열쇠 +${rw.keys}개`, tagType: 'key', banner: `고등급 중복 보상! 소환 열쇠 +${rw.keys}개 획득!`, gold: 0, keys: rw.keys }
-      : { kind: type, grade, name, statText, tag: `🪙 판매 +${rw.gold}G`, tagType: 'sell', banner: `${type === 'sword' ? '중복 장비' : '중복 방어구'} 자동 판매! +${rw.gold}G 획득!`, gold: rw.gold, keys: 0 };
+      ? { kind: type, grade, name, statText, tag: `🗝️ 열쇠 +${rw.keys}개`, tagType: 'key', banner: `인벤토리가 가득 차서 자동 판매! 소환 열쇠 +${rw.keys}개 획득!`, gold: 0, keys: rw.keys }
+      : { kind: type, grade, name, statText, tag: `🪙 판매 +${rw.gold}G`, tagType: 'sell', banner: `인벤토리가 가득 차서 자동 판매! +${rw.gold}G 획득!`, gold: rw.gold, keys: 0 };
   }
   const pool = SKILLS.filter(s => s.grade === grade), sk = pick(pool), statText0 = `기본피해 ${sk.baseDmg} + 공격력×${sk.atkRatio}`;
   unlockCodex('skills', sk.name);
@@ -3031,6 +3064,65 @@ function raidTimeOver() {
     <div style="font-size:.76rem;color:var(--sub)">장비 승급, 룬 합성, 펫 성장으로 화력을 더욱 끌어올려 보세요!</div>
   `), 800);
 }
+
+// ===== 장비 인벤토리 (3.4a: 데이터 계층) =====
+const INV_MAX = 20;
+let INV_SEQ = 0;
+const invKey = (type) => (type === 'sword' ? 'swords' : 'armors');
+function invItemId() { return `i${Date.now().toString(36)}${(++INV_SEQ).toString(36)}`; }
+function invOf(type) {
+  if (!S.inventory) S.inventory = { swords: [], armors: [] };
+  const k = invKey(type);
+  if (!Array.isArray(S.inventory[k])) S.inventory[k] = [];
+  return S.inventory[k];
+}
+const inventoryFull = (type) => invOf(type).length >= INV_MAX;
+/** Stores a dropped piece. Returns the entry, or null when the bag is full. */
+function addToInventory(type, item) {
+  const list = invOf(type);
+  if (list.length >= INV_MAX || !item) return null;
+  const entry = { ...item, id: item.id || invItemId(), fav: !!item.fav };
+  list.push(entry);
+  return entry;
+}
+/** Total ATK/DEF the stored pieces would give (used by the inventory UI). */
+function invStatText(type, item) {
+  const base = type === 'sword' ? 'ATK' : 'DEF';
+  return `${base} +${fmt(equipBonus(type, item))}`;
+}
+/** Equips an inventory piece; the previous one goes back to the bag (forge progress moves along). */
+function equipFromInventory(type, id) {
+  const list = invOf(type), i = list.findIndex(e => e.id === id);
+  if (i < 0) return false;
+  const next = list[i];
+  const h = S.hero, cur = h[type];
+  const carried = { enhanceLevel: cur.enhanceLevel | 0, starTier: cur.starTier | 0, starCount: cur.starCount | 0, pityBonus: cur.pityBonus || 0 };
+  list.splice(i, 1);
+  let sold = 0;
+  withHpDelta(() => {
+    if (cur && typeof cur === 'object' && cur.name) {
+      const back = addToInventory(type, cur);
+      if (!back) { const rw = SELL[cur.grade] || { gold: cur.sellPrice || 0 }; grantReward(rw); sold = rw.gold || 0; }
+    }
+    h[type] = { ...next, ...carried };
+    delete h[type].id; delete h[type].fav;
+  });
+  save(); refreshAll();
+  return { ok: true, sold };
+}
+/** Sells one stored piece (favourites are protected). Returns the gold granted. */
+function sellInventoryItem(type, id) {
+  const list = invOf(type), i = list.findIndex(e => e.id === id);
+  if (i < 0) return 0;
+  const item = list[i];
+  if (item.fav) return 0;
+  list.splice(i, 1);
+  const gold = Math.max(1, Math.floor((item.sellPrice || 0) * 0.6));
+  S.hero.gold += gold;
+  save(); refreshAll();
+  return gold;
+}
+const invCount = (type) => invOf(type).length;
 
 // ===== 로드아웃 & 자동 시전 규칙 (3.2) =====
 const LOADOUT_SLOTS = 3;
