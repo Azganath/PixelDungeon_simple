@@ -43,6 +43,10 @@
 * **테스트 버전:** 밸런스 조정 및 기능 추가가 수시로 이루어질 수 있습니다. 버그 제보나 피드백은 언제든 환영합니다!
 * **세이브 백업 (v1.1):** 타이틀/마을의 **[💾 세이브]** 버튼으로 진행 상황을 코드나 `.json` 파일로 내보낼 수 있습니다. 다른 기기에서 **[📥 가져오기]** 로 그대로 복원됩니다.
 * **전투 사이 HP 유지 (v1.1):** 전투에서 잃은 HP는 다음 전투로 이어지며, 승리 시 최대 HP의 30%만 회복됩니다. 물약·흡혈·방어력이 실제로 의미를 갖습니다. (패배 시에는 마을에서 완전 회복)
+* **오프라인 수익 (v1.2):** 앱을 닫아둔 동안에도 최대 8시간까지 자동 사냥 수익이 쌓입니다 (5분 유예, 50% 효율). 접속하면 `🌙 오프라인 수익 보고서`가 뜹니다.
+* **자동 파밍 (v1.2):** 마을의 `🔁 자동 파밍`에서 HP·골드·열쇠·전투 횟수 조건을 정하면 결과창이 자동으로 넘어가며 계속 사냥합니다.
+* **튜토리얼 & 일일 퀘스트 (v1.2):** 5단계 튜토리얼 보상 + 매일 00:00에 새로 열리는 3개의 일일 퀘스트, 연속 접속 보너스(최대 7일).
+* **사운드 & 언어 (v1.2):** 웹오디오로 합성한 칩튠 효과음(볼륨/음소거 저장)과 `🌐 언어` 선택 (한국어 / English / Español).
 
 ---
 
@@ -60,6 +64,8 @@
 src/core/formulas.js   순수 공식 (데미지·비용·상자 확률·DPS)
 tests/*.test.js        단위 테스트 + game.js 통합 스모크 테스트
 tests/fixtures/        세이브 마이그레이션 픽스처 (save-v7.json)
+src/i18n/              번역 런타임 + 사전 (ko/en/es) + 자동 추출 인벤토리
+tools/                 i18n 추출·번들 스크립트
 ```
 
 ### English
@@ -68,5 +74,7 @@ PixelDungeon_simple is a static, dependency-free 16-bit idle RPG. There is no bu
 
 * `src/core/formulas.js` holds every pure formula (damage, costs, chest odds, DPS) and is shared by the browser (`window.PDCF`) and the test suite.
 * `npm test` runs the Node test runner (no `npm install` needed); `npm run check` runs syntax checks; `npm run serve` starts a local static server on port 8080.
+* i18n: `npm run i18n` re-extracts every Korean string (`src/i18n/ko.auto.json`) and rebuilds `src/i18n/strings.js` from the curated `ko/en/es` dictionaries. The runtime (`src/i18n/index.js`) exposes `t()`, `setLang()` and a Korean fallback, so missing translations never break the layout.
 * CI (`.github/workflows/ci.yml`) runs both on every push and pull request.
 * **New in v1.1:** save export/import (code or `.json`), HP persists between battles (30% heal on victory), DPS meter in the menu/character/forge screens, stoppable auto-forge with a `+10`/`MAX` goal, and in-game modals instead of native `alert()`/`confirm()` dialogs.
+* **New in v1.2:** offline earnings (up to 8 h, 5 min grace, 50% efficiency) with a report modal, auto-farm with HP/gold/keys/battle stop rules, a 5-step tutorial plus 3 rotating daily quests with a login streak, WebAudio chiptune SFX (no asset files), coalesced saves + memoised `stats()`, and a KO/EN/ES language picker built on the new i18n layer.

@@ -254,6 +254,29 @@ test('2.4 — sound is optional, throttled and persisted', () => {
   assert.equal(g.run('S.audio.vol'), 0.25);
 });
 
+test('T1 — the real dictionaries translate in-game and the choice persists', () => {
+  const g = boot();
+  const i18nDir = path.join(__dirname, '..', 'src', 'i18n');
+  g.run(fs.readFileSync(path.join(i18nDir, 'strings.js'), 'utf8'));
+  g.run(fs.readFileSync(path.join(i18nDir, 'index.js'), 'utf8'));
+  g.run('load();');
+  assert.equal(g.run("txt('ui.common.close', '닫기 [ESC]')"), '닫기 [ESC]', 'Korean by default');
+
+  g.run("setLangName('es');");
+  assert.equal(g.run('S.lang'), 'es');
+  assert.equal(g.run("txt('ui.common.close', '닫기 [ESC]')"), 'Cerrar [ESC]', 'Spanish dictionary wins');
+
+  g.run('saveNow(); load();');
+  assert.equal(g.run('S.lang'), 'es', 'language survives a reload');
+
+  g.run("setLangName('en');");
+  assert.equal(g.run("txt('ui.audio.enable', 'x')"), '🔊 Turn sound on');
+
+  g.run("setLangName('ko');");
+  assert.equal(g.run("txt('ui.audio.enable', 'x')"), '🔊 사운드 켜기');
+  assert.equal(g.run('document.documentElement.lang'), 'ko', 'html lang follows the setting');
+});
+
 test('sprint 2 UI — every modal renders cleanly and its handlers exist', () => {
   const g = boot();
   g.run('load()');

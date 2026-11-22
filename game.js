@@ -256,6 +256,7 @@ function defaultState() {
     autoFarm: { on: false, done: 0, stopHpPct: 30, stopGold: 0, stopKeys: 0, maxBattles: 0 },
     quests: { tutorial: { done: [] }, daily: { date: '', progress: {}, claimed: false }, streak: { count: 0, last: '' } },
     audio: { sfx: true, vol: 0.5 },
+    lang: 'ko',
     battle: { inBattle: false, isRaid: false, raidTurnsLeft: 15, monster: null, turn: 1, isPlayerTurn: true },
   };
 }
@@ -348,6 +349,7 @@ function sanitize() {
   S.audio.sfx = !!S.audio.sfx;
   S.audio.vol = Math.max(0, Math.min(1, Number(S.audio.vol) || 0));
   checkDailyReset();
+  if (typeof applyLang === 'function') applyLang();
   if (![1, 2, 'skip'].includes(S.battleSpeed)) S.battleSpeed = 1;
   if (!WORLDS.some(w => w.id === S.world)) S.world = 'normal';
   S.battle = { inBattle: false, isRaid: false, raidTurnsLeft: 15, monster: null, turn: 1, isPlayerTurn: true };
@@ -1729,7 +1731,7 @@ function resetGame() {
 
 // ----- 장면 -----
 function switchScene(id) {
-  if (id !== 'scene-battle') { clearAuto(); S.battle.inBattle = false; if (id === 'scene-menu' && S.autoFarm?.on) stopAutoFarm('마을 귀환'); }
+  if (id !== 'scene-battle') { clearAuto(); S.battle.inBattle = false; if (id === 'scene-menu' && S.autoFarm?.on) stopAutoFarm(txt('ui.autofarm.reason.town', '마을 귀환')); }
   document.querySelectorAll('.scene').forEach(s => s.classList.toggle('active', s.id === id));
   $('top-bar').classList.toggle('hidden', id === 'scene-title');
   refreshAll();
@@ -1846,9 +1848,10 @@ function renderMenu(st) {
     mb(14, 'gold', '🏆 영웅 업적의 전당' + (hasAch ? '<span class="red-dot">!</span>' : ''), '도감 · 처치 · 강화 등 열쇠/골드 수급', 'openAchievements()'),
     mb(15, 'red', '👹 차원 레이드 포탈', '거대 보스 토벌 (무지개별 조각 &amp; 대량 골드 파밍)', 'openRaidPortal()'),
     mb(16, '', '⏩ 전투 배속 설정', spd, 'openSpeed()'),
-    mb(17, 'cyan', '🔁 자동 파밍 (연속 사냥 &amp; 정지 조건)', afStatusText(), 'openAutoFarm()'),
-    mb(18, 'gold', '📜 튜토리얼 &amp; 일일 퀘스트' + (dailiesClaimable() ? '<span class="red-dot">!</span>' : ''), `튜토리얼 ${tutorialDoneCount()}/${TUTORIAL.length} · 오늘 ${dailyDoneCount()}/${dailyList().length}${S.quests.daily.claimed ? ' 수령완료' : ''}`, 'openQuests()'),
-    mb(19, '', '🔊 사운드 설정', S.audio.sfx ? `켜짐 · 볼륨 ${Math.round(S.audio.vol * 100)}%` : '꺼짐 (배터리 절약)', 'openAudio()'),
+    mb(17, 'cyan', txt('ui.menu.autofarm', '🔁 자동 파밍 (연속 사냥 &amp; 정지 조건)'), afStatusText(), 'openAutoFarm()'),
+    mb(18, 'gold', txt('ui.menu.quests', '📜 튜토리얼 &amp; 일일 퀘스트') + (dailiesClaimable() ? '<span class="red-dot">!</span>' : ''), questsSubText(), 'openQuests()'),
+    mb(19, '', txt('ui.menu.audio', '🔊 사운드 설정'), S.audio.sfx ? txt('ui.audio.onShort', '켜짐 · 볼륨 {v}%', { v: Math.round(S.audio.vol * 100) }) : txt('ui.audio.offShort', '꺼짐 (배터리 절약)'), 'openAudio()'),
+    mb(20, '', txt('ui.menu.lang', '🌐 언어 / Language'), langStatusText(), 'openLang()'),
     mb(0, 'red', '🚪 타이틀 화면으로 [ESC]', '게임 시작 화면으로 복귀', "switchScene('scene-title')", true),
   ].join('');
 }
@@ -2914,6 +2917,48 @@ function raidTimeOver() {
   `), 800);
 }
 
+// ===== i18n (T1): 번역 조회 + 언어 적용 =====
+const fmtVars = (tpl, vars) => (vars ? String(tpl).replace(/\{(\w+)\}/g, (m, k) => (vars[k] === undefined ? m : String(vars[k]))) : tpl);
+/** 번역 조회: 사전이 없으면(테스트/구버전) 한국어 원문을 그대로 쓴다. */
+function txt(key, fallback, vars) {
+  const src = (typeof I18N !== 'undefined' && I18N && typeof I18N.t === 'function') ? I18N.t(key, fallback, vars) : (fallback === undefined ? key : fallback);
+  return fmtVars(src, vars);
+}
+const LANGS = ['ko', 'en', 'es'];
+const LANG_META = [{ id: 'ko', label: '한국어', flag: '🇰🇷' }, { id: 'en', label: 'English', flag: '🇬🇧' }, { id: 'es', label: 'Español', flag: '🇪🇸' }];
+function applyLang() {
+  S.lang = LANGS.includes(S.lang) ? S.lang : 'ko';
+  if (typeof I18N !== 'undefined' && I18N && typeof I18N.setLang === 'function') I18N.setLang(S.lang);
+  if (typeof document !== 'undefined' && document.documentElement) document.documentElement.lang = S.lang;
+}
+function setLangName(id) {
+  if (!LANGS.includes(id)) return;
+  S.lang = id; applyLang(); saveNow();
+  if (isOpen('lang')) refreshModal('lang', txt('ui.lang.title', '🌐 언어 선택 / Language'), langHtml());
+  refreshAll();
+  toast(txt('ui.lang.set', '언어를 {lang}로 변경했습니다.', { lang: id.toUpperCase() }), 'ok');
+}
+const langStatusText = () => (LANG_META.find(l => l.id === S.lang) || LANG_META[0]).label;
+function questsSubText() {
+  const v = { a: tutorialDoneCount(), b: TUTORIAL.length, c: dailyDoneCount(), d: dailyList().length };
+  return S.quests.daily.claimed
+    ? txt('ui.menu.questsSubClaimed', '튜토리얼 {a}/{b} · 오늘 {c}/{d} 수령완료', v)
+    : txt('ui.menu.questsSub', '튜토리얼 {a}/{b} · 오늘 {c}/{d}', v);
+}
+const LT = '🌐 언어 선택 / Language';
+function langHtml() {
+  const rows = LANG_META.map(l => {
+    const cov = (typeof I18N !== 'undefined' && I18N && I18N.coverage) ? I18N.coverage(l.id) : 0;
+    const cur = l.id === S.lang;
+    return `<div class="mrow"><div class="l"><b>${l.flag} ${l.label}${cur ? ' ✅' : ''}</b><small style="color:var(--sub)">${txt('ui.lang.coverage', '번역 문구 {n}개', { n: cov })}</small></div>
+      <div class="bts"><button class="btn mini ${cur ? 'green' : ''}" onclick="setLangName('${l.id}')">${cur ? txt('ui.lang.current', '현재 언어') : l.id.toUpperCase()}</button></div></div>`;
+  }).join('');
+  return `<div class="mlist">${rows}</div>
+  <small style="color:var(--sub)">${txt('ui.lang.note', '번역은 순차적으로 적용됩니다. 아직 번역이 없는 문구는 한국어로 표시됩니다.')}</small>
+  <button class="btn full" onclick="closeModal('lang')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function openLang() { openModal('lang', 520, LT, langHtml()); }
+
 // ===== 사운드 (칩튠 SFX, WebAudio · 외부 파일 없음) =====
 const SFX_DEFS = {
   click: { type: 'square', vol: 0.14, notes: [[660, 0.04]] },
@@ -2974,21 +3019,22 @@ function toggleSfx() {
   S.audio.sfx = !S.audio.sfx; saveNow();
   if (S.audio.sfx) sfx('chest');
   const el = $('sfx-toggle'); if (el) el.textContent = S.audio.sfx ? '🔊 켜짐' : '🔇 꺼짐';
-  toast(S.audio.sfx ? '🔊 사운드를 켰습니다.' : '🔇 사운드를 껐습니다 (배터리 절약).', S.audio.sfx ? 'ok' : '');
+  toast(S.audio.sfx ? txt('ui.audio.turnedOn', '🔊 사운드를 켰습니다.') : txt('ui.audio.turnedOff', '🔇 사운드를 껐습니다 (배터리 절약).'), S.audio.sfx ? 'ok' : '');
   refreshAll();
 }
 const AT = '🔊 사운드 설정';
 function audioHtml() {
   const a = S.audio;
-  return `<div class="strip"><span>상태: <b id="sfx-toggle" style="color:${a.sfx ? 'var(--green)' : 'var(--sub)'}">${a.sfx ? '🔊 켜짐' : '🔇 꺼짐'}</b></span><span>볼륨 <b id="sfx-vol-label">${Math.round(a.vol * 100)}%</b></span></div>
-  <button class="btn ${a.sfx ? 'red' : 'green'} full" onclick="toggleSfx()">${a.sfx ? '🔇 사운드 끄기' : '🔊 사운드 켜기'}</button>
-  <div class="mrow"><div class="l"><b>🔉 볼륨</b><small style="color:var(--sub)">칩튠 효과음만 조절됩니다 (BGM 없음)</small></div>
+  const tests = ['hit', 'crit', 'win', 'lose', 'chest', 'levelup'];
+  return `<div class="strip"><span>${txt('ui.common.status', '상태:')} <b id="sfx-toggle" style="color:${a.sfx ? 'var(--green)' : 'var(--sub)'}">${a.sfx ? txt('ui.audio.on', '🔊 켜짐') : txt('ui.audio.off', '🔇 꺼짐')}</b></span><span>${txt('ui.audio.volume', '🔉 볼륨')} <b id="sfx-vol-label">${Math.round(a.vol * 100)}%</b></span></div>
+  <button class="btn ${a.sfx ? 'red' : 'green'} full" onclick="toggleSfx()">${a.sfx ? txt('ui.audio.disable', '🔇 사운드 끄기') : txt('ui.audio.enable', '🔊 사운드 켜기')}</button>
+  <div class="mrow"><div class="l"><b>${txt('ui.audio.volume', '🔉 볼륨')}</b><small style="color:var(--sub)">${txt('ui.audio.volumeHint', '칩튠 효과음만 조절됩니다 (BGM 없음)')}</small></div>
     <div class="bts"><input type="range" min="0" max="100" step="5" value="${Math.round(a.vol * 100)}" style="width:130px" oninput="setSfxVolume(this.value / 100)"></div></div>
   <div class="mlist">
-    ${[['hit', '⚔️ 타격음'], ['crit', '💥 크리티컬'], ['win', '🏆 승리'], ['lose', '💀 패배'], ['chest', '📦 상자'], ['levelup', '⭐ 강화 성공']].map(([k, l]) => `<div class="mrow"><div class="l"><b>${l}</b></div><div class="bts"><button class="btn mini" onclick="sfx('${k}')">▶ 재생</button></div></div>`).join('')}
+    ${tests.map(k => `<div class="mrow"><div class="l"><b>${txt('ui.audio.test.' + k, k)}</b></div><div class="bts"><button class="btn mini" onclick="sfx('${k}')">${txt('ui.audio.play', '▶ 재생')}</button></div></div>`).join('')}
   </div>
-  <small style="color:var(--sub)">모든 소리는 브라우저에서 실시간 합성됩니다 (오디오 파일 없음 → 로딩 0초). 브라우저 정책상 첫 터치 이후에 재생됩니다.</small>
-  <button class="btn full" onclick="closeModal('audio')">닫기 [ESC]</button>`;
+  <small style="color:var(--sub)">${txt('ui.audio.note', '모든 소리는 브라우저에서 실시간 합성됩니다 (오디오 파일 없음 → 로딩 0초). 브라우저 정책상 첫 터치 이후에 재생됩니다.')}</small>
+  <button class="btn full" onclick="closeModal('audio')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
 }
 function openAudio() { openModal('audio', 520, AT, audioHtml()); }
 
@@ -3020,7 +3066,7 @@ function tutorialComplete(id) {
   if (q.done.includes(id)) return false;
   const step = TUTORIAL.find(t => t.id === id); if (!step) return false;
   q.done.push(id); grantQuestReward(step.reward);
-  toast(`✅ 튜토리얼 완료: ${step.label} <b>(+${questRewardText(step.reward)})</b>`, 'ok');
+  toast(txt('ui.quests.tutToast', '✅ 튜토리얼 완료: {label} (+{reward})', { label: step.label, reward: questRewardText(step.reward) }), 'ok');
   return true;
 }
 function questEvent(type, n = 1) {
@@ -3038,8 +3084,8 @@ const dailyDoneCount = () => dailyList().filter(d => (S.quests.daily.progress[d.
 const dailiesClaimable = () => !S.quests.daily.claimed && dailyDoneCount() >= dailyList().length;
 const tutorialDoneCount = () => S.quests.tutorial.done.length;
 function claimDailies() {
-  if (S.quests.daily.claimed) return infoModal('일일 퀘스트', '오늘의 보상은 이미 수령했습니다.<br>내일 다시 도전하세요!');
-  if (!dailiesClaimable()) return infoModal('일일 퀘스트', `아직 ${dailyList().length - dailyDoneCount()}개의 퀘스트가 남았습니다.`);
+  if (S.quests.daily.claimed) return infoModal(txt('ui.quests.claimTitle', '🎉 일일 퀘스트 완료'), txt('ui.quests.alreadyClaimed', '오늘의 보상은 이미 수령했습니다.<br>내일 다시 도전하세요!'));
+  if (!dailiesClaimable()) return infoModal(txt('ui.quests.claimTitle', '🎉 일일 퀘스트 완료'), txt('ui.quests.remaining', '아직 {n}개의 퀘스트가 남았습니다.', { n: dailyList().length - dailyDoneCount() }));
   let keys = 0, gold = 0;
   for (const d of dailyList()) { const r = DAILY_META[d.id].reward; if (r.keys) keys += r.keys; else gold += r.gold; }
   const streak = Math.max(1, Math.min(7, S.quests.streak.count | 0));
@@ -3047,7 +3093,10 @@ function claimDailies() {
   S.quests.daily.claimed = true;
   saveNow(); refreshAll();
   if (isOpen('quests')) refreshModal('quests', QT, questsHtml());
-  infoModal('🎉 일일 퀘스트 완료', `보상 획득: <b>🗝️ ${keys + streak}개</b>${gold ? ` · <b>${fmt(gold)}G</b>` : ''}<br><small style="color:var(--sub)">연속 접속 ${S.quests.streak.count}일 보너스 +${streak} 포함</small>`);
+  const goldTxt = gold ? txt('ui.quests.claimBodyGold', ' · <b>{gold}G</b>', { gold: fmt(gold) }) : '';
+  infoModal(txt('ui.quests.claimTitle', '🎉 일일 퀘스트 완료'),
+    txt('ui.quests.claimBody', '보상 획득: <b>🗝️ {keys}개</b>{gold}', { keys: keys + streak, gold: goldTxt }) +
+    `<br><small style="color:var(--sub)">${txt('ui.quests.claimNote', '연속 접속 {streak}일 보너스 +{bonus} 포함', { streak: S.quests.streak.count, bonus: streak })}</small>`);
 }
 function checkDailyReset() {
   const today = CF.dailyDateKey();
@@ -3057,30 +3106,33 @@ function checkDailyReset() {
   const next = CF.streakNext(S.quests.streak, today);
   S.quests.streak = { count: next.count, last: next.last };
   _dailyCache = null;
-  if (next.changed && next.count > 1) QUEST_NEWS.push(`🔥 연속 접속 ${next.count}일!`);
+  if (next.changed && next.count > 1) QUEST_NEWS.push(txt('ui.quests.streakNews', '🔥 연속 접속 {n}일!', { n: next.count }));
   return true;
 }
 const QT = '📜 안내 &amp; 일일 퀘스트';
 function questsHtml() {
   const tut = TUTORIAL.map((t, i) => {
     const done = S.quests.tutorial.done.includes(t.id);
-    return `<div class="mrow"><div class="l"><b style="color:${done ? 'var(--green)' : 'var(--text)'}">${done ? '✅' : '⬜'} ${i + 1}. ${t.label}</b><small style="color:var(--gold)">보상 ${questRewardText(t.reward)}</small></div></div>`;
+    return `<div class="mrow"><div class="l"><b style="color:${done ? 'var(--green)' : 'var(--text)'}">${done ? '✅' : '⬜'} ${i + 1}. ${t.label}</b><small style="color:var(--gold)">${txt('ui.quests.reward', '보상 {reward}', { reward: questRewardText(t.reward) })}</small></div></div>`;
   }).join('');
   const daily = dailyList().map(d => {
     const meta = DAILY_META[d.id], cur = Math.min(d.target, S.quests.daily.progress[d.id] | 0), pct = Math.round((cur / d.target) * 100);
     return `<div class="mrow"><div class="l"><b>${meta.icon} ${meta.label} <span style="color:var(--cyan)">${cur}/${d.target}</span></b>
-      <small style="color:var(--gold)">보상 ${questRewardText(meta.reward)}</small>
+      <small style="color:var(--gold)">${txt('ui.quests.reward', '보상 {reward}', { reward: questRewardText(meta.reward) })}</small>
       <div class="bar12" style="margin-top:4px"><div style="width:${pct}%"></div></div></div></div>`;
   }).join('');
   const claimable = dailiesClaimable();
-  return `<div class="strip"><span>튜토리얼 <b>${tutorialDoneCount()}/${TUTORIAL.length}</b></span><span>오늘의 퀘스트 <b>${dailyDoneCount()}/${dailyList().length}</b></span><span>🔥 연속 접속 <b>${S.quests.streak.count}일</b></span></div>
-    <div class="ptitle" style="margin:0">🧭 처음이라면 (튜토리얼)</div>
+  const claimLabel = S.quests.daily.claimed ? txt('ui.quests.claimed', '✅ 오늘 보상 수령 완료')
+    : claimable ? txt('ui.quests.claim', '🎁 일일 보상 + 연속 접속 보너스 받기')
+    : txt('ui.quests.pending', '모든 퀘스트를 완료하면 보상 획득');
+  return `<div class="strip"><span>${txt('ui.quests.tutDone', '튜토리얼')} <b>${tutorialDoneCount()}/${TUTORIAL.length}</b></span><span>${txt('ui.quests.dailyDone', '오늘의 퀘스트')} <b>${dailyDoneCount()}/${dailyList().length}</b></span><span>${txt('ui.quests.streak', '🔥 연속 접속')} <b>${S.quests.streak.count}</b></span></div>
+    <div class="ptitle" style="margin:0">${txt('ui.quests.tutorial', '🧭 처음이라면 (튜토리얼)')}</div>
     <div class="mlist">${tut}</div>
-    <div class="ptitle" style="margin:0">📅 오늘의 퀘스트 · ${S.quests.daily.date}</div>
+    <div class="ptitle" style="margin:0">${txt('ui.quests.daily', '📅 오늘의 퀘스트 · {date}', { date: S.quests.daily.date })}</div>
     <div class="mlist">${daily}</div>
-    <button class="btn ${claimable ? 'gold' : ''} full" ${claimable ? '' : 'disabled'} onclick="claimDailies()">${S.quests.daily.claimed ? '✅ 오늘 보상 수령 완료' : claimable ? '🎁 일일 보상 + 연속 접속 보너스 받기' : '모든 퀘스트를 완료하면 보상 획득'}</button>
-    <small style="color:var(--sub)">일일 퀘스트는 매일 00:00(브라우저 시간)에 새로 3개가 열립니다. 연속 접속 시 보너스 열쇠가 최대 7개까지 늘어납니다.</small>
-    <button class="btn full" onclick="closeModal('quests')">닫기 [ESC]</button>`;
+    <button class="btn ${claimable ? 'gold' : ''} full" ${claimable ? '' : 'disabled'} onclick="claimDailies()">${claimLabel}</button>
+    <small style="color:var(--sub)">${txt('ui.quests.note', '일일 퀘스트는 매일 00:00(브라우저 시간)에 새로 3개가 열립니다. 연속 접속 시 보너스 열쇠가 최대 7개까지 늘어납니다.')}</small>
+    <button class="btn full" onclick="closeModal('quests')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
 }
 function openQuests() { openModal('quests', 560, QT, questsHtml()); }
 
@@ -3135,42 +3187,44 @@ function runOfflineProgress() {
 const AF_T = '🔁 자동 파밍';
 function afStatusText() {
   const a = S.autoFarm || {}, st = stats();
-  if (!a.on) return '꺼짐 · 조건을 정해 연속 사냥';
+  if (!a.on) return txt('ui.autofarm.statusOff', '꺼짐 · 조건을 정해 연속 사냥');
   const hpPct = Math.round((S.hero.hp / Math.max(1, st.maxHp)) * 100);
-  return `가동 중 · ${a.done | 0}회 · HP ${hpPct}% · 중지조건 HP ${a.stopHpPct}%${a.stopGold ? ` / ${fmt(a.stopGold)}G` : ''}${a.stopKeys ? ` / 🗝️${a.stopKeys}` : ''}${a.maxBattles ? ` / ${a.maxBattles}회` : ''}`;
+  return txt('ui.autofarm.statusOn', '가동 중 · {n}회 · HP {hp}% · 중지 HP {hpmin}%', { n: a.done | 0, hp: hpPct, hpmin: a.stopHpPct });
 }
 function afHtml() {
   const a = S.autoFarm, st = stats();
   const hpPct = Math.round((S.hero.hp / Math.max(1, st.maxHp)) * 100);
   const row = (label, key, val, hint) => `<div class="mrow"><div class="l"><b>${label}</b><small style="color:var(--sub)">${hint}</small></div>
     <div class="bts"><input type="number" min="0" step="1" value="${val}" style="width:96px;background:#0b0d13;color:var(--text);border:2px solid var(--iron);padding:6px;font-family:inherit" onchange="setFarmOpt('${key}', this.value)"></div></div>`;
-  return `<div class="strip"><span>상태: <b style="color:${a.on ? 'var(--green)' : 'var(--sub)'}">${a.on ? '가동 중' : '꺼짐'}</b></span><span>진행 <b>${a.done | 0}</b>회</span><span>현재 HP <b>${hpPct}%</b></span></div>
-  <button class="btn ${a.on ? 'red' : 'green'} full" onclick="toggleAutoFarm()">${a.on ? '⏹ 자동 파밍 끄기' : '▶️ 자동 파밍 켜기'}</button>
+  const unl = txt('ui.autofarm.unlimited', '0 = 무제한');
+  return `<div class="strip"><span>${txt('ui.common.status', '상태:')} <b style="color:${a.on ? 'var(--green)' : 'var(--sub)'}">${a.on ? txt('ui.autofarm.on', '가동 중') : txt('ui.autofarm.off', '꺼짐')}</b></span><span>${txt('ui.common.progress', '진행')} <b>${a.done | 0}</b>${txt('ui.common.times', '회')}</span><span>HP <b>${hpPct}%</b></span></div>
+  <button class="btn ${a.on ? 'red' : 'green'} full" onclick="toggleAutoFarm()">${a.on ? txt('ui.autofarm.disable', '⏹ 자동 파밍 끄기') : txt('ui.autofarm.enable', '▶️ 자동 파밍 켜기')}</button>
   <div class="mlist">
-    ${row('⏰ 최대 전투 횟수', 'maxBattles', a.maxBattles, '0 = 무제한')}
-    ${row('❤️ HP 중지 기준 (%)', 'stopHpPct', a.stopHpPct, '승리 후 HP가 이 비율보다 낮으면 중지')}
-    ${row('🪙 골드 중지 목표', 'stopGold', a.stopGold, '0 = 무제한')}
-    ${row('🗝️ 열쇠 중지 목표', 'stopKeys', a.stopKeys, '0 = 무제한')}
+    ${row(txt('ui.autofarm.maxBattles', '⏰ 최대 전투 횟수'), 'maxBattles', a.maxBattles, unl)}
+    ${row(txt('ui.autofarm.hpPct', '❤️ HP 중지 기준 (%)'), 'stopHpPct', a.stopHpPct, txt('ui.autofarm.hpHint', '승리 후 HP가 이 비율보다 낮으면 중지'))}
+    ${row(txt('ui.autofarm.gold', '🪙 골드 중지 목표'), 'stopGold', a.stopGold, unl)}
+    ${row(txt('ui.autofarm.keys', '🗝️ 열쇠 중지 목표'), 'stopKeys', a.stopKeys, unl)}
   </div>
-  <small style="color:var(--sub)">자동 파밍은 결과창을 자동으로 넘기고 다음 층으로 계속 진행합니다. 승리 시 최대 HP의 30%를 회복하며, 패배하거나 마을로 돌아오면 자동으로 꺼집니다.</small>
-  <button class="btn full" onclick="closeModal('autofarm')">닫기 [ESC]</button>`;
+  <small style="color:var(--sub)">${txt('ui.autofarm.note', '자동 파밍은 결과창을 자동으로 넘기고 다음 층으로 계속 진행합니다. 승리 시 최대 HP의 30%를 회복하며, 패배하거나 마을로 돌아오면 자동으로 꺼집니다.')}</small>
+  <button class="btn full" onclick="closeModal('autofarm')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
 }
-function openAutoFarm() { openModal('autofarm', 520, AF_T, afHtml()); }
+function afTitle() { return txt('ui.autofarm.title', AF_T); }
+function openAutoFarm() { openModal('autofarm', 520, afTitle(), afHtml()); }
 function setFarmOpt(key, val) {
   const n = Math.max(0, Math.min(9999999, Math.floor(Number(val) || 0)));
-  S.autoFarm[key] = n; saveNow(); refreshModal('autofarm', AF_T, afHtml()); refreshAll();
+  S.autoFarm[key] = n; saveNow(); refreshModal('autofarm', afTitle(), afHtml()); refreshAll();
 }
 function toggleAutoFarm() {
   const a = S.autoFarm; a.on = !a.on; if (a.on) a.done = 0;
   saveNow();
-  toast(a.on ? '🔁 자동 파밍 시작 · 결과창이 자동으로 넘어갑니다.' : '⏹ 자동 파밍을 껐습니다.', a.on ? 'ok' : '');
-  if (isOpen('autofarm')) refreshModal('autofarm', AF_T, afHtml());
+  toast(a.on ? txt('ui.autofarm.started', '🔁 자동 파밍 시작 · 결과창이 자동으로 넘어갑니다.') : txt('ui.autofarm.stopped', '⏹ 자동 파밍을 껐습니다.'), a.on ? 'ok' : '');
+  if (isOpen('autofarm')) refreshModal('autofarm', afTitle(), afHtml());
   refreshAll();
 }
 function stopAutoFarm(reason) {
   const a = S.autoFarm; if (!a || !a.on) return;
   a.on = false; saveNow();
-  toast(`🔁 자동 파밍 종료 · ${reason}`, 'ok');
+  toast(txt('ui.autofarm.end', '🔁 자동 파밍 종료 · {reason}', { reason }), 'ok');
   refreshAll();
 }
 function maybeAutoFarm() {
@@ -3193,16 +3247,16 @@ function maybeAutoFarm() {
 function showOfflineReport() {
   if (!OFFLINE) return;
   const o = OFFLINE, hrs = o.awayMs / 3600e3;
-  const awayTxt = hrs >= 1 ? `${hrs.toFixed(1)}시간` : `${Math.max(1, Math.round(o.awayMs / 60e3))}분`;
+  const awayTxt = hrs >= 1 ? `${hrs.toFixed(1)}h` : `${Math.max(1, Math.round(o.awayMs / 60e3))}min`;
   const rows = [
-    `🌙 자리를 비운 시간: <b>${awayTxt}</b>${o.capped ? ' <small style="color:var(--orange-g)">(최대 8시간 적립)</small>' : ''}`,
-    `⚔️ 자동 파밍: <b>${fmt(o.battles)}회</b> 전투 · 승률 ${Math.round(o.winRate * 100)}% <small style="color:var(--sub)">(오프라인 효율 50%)</small>`,
-    `🪙 획득 골드: <b style="color:var(--gold)">+${fmt(o.gold)}G</b>`,
-    o.keys ? `🗝️ 획득 열쇠: <b style="color:var(--cyan)">+${fmt(o.keys)}개</b>` : '',
-    `🐾 사냥터: Stage ${o.stage} (던전 입장 층 기준)`,
-    o.winRate < 0.35 ? '<small style="color:var(--red)">⚠️ 승률이 낮습니다. 강화 · 훈련으로 전력을 키우면 오프라인 수익이 늘어납니다.</small>' : '',
+    txt('ui.offline.away', '🌙 자리를 비운 시간: <b>{away}</b>', { away: awayTxt }) + (o.capped ? ` <small style="color:var(--orange-g)">${txt('ui.offline.capped', '(최대 8시간 적립)')}</small>` : ''),
+    txt('ui.offline.battles', '⚔️ 자동 파밍: <b>{n}회</b> 전투 · 승률 {wr}%', { n: fmt(o.battles), wr: Math.round(o.winRate * 100) }) + ` <small style="color:var(--sub)">${txt('ui.offline.efficiency', '(오프라인 효율 50%)')}</small>`,
+    txt('ui.offline.gold', '🪙 획득 골드: <b>+{gold}G</b>', { gold: fmt(o.gold) }),
+    o.keys ? txt('ui.offline.keys', '🗝️ 획득 열쇠: <b>+{n}개</b>', { n: fmt(o.keys) }) : '',
+    txt('ui.offline.stage', '🐾 사냥터: Stage {stage} (던전 입장 층 기준)', { stage: o.stage }),
+    o.winRate < 0.35 ? `<small style="color:var(--red)">${txt('ui.offline.warn', '⚠️ 승률이 낮습니다. 강화 · 훈련으로 전력을 키우면 오프라인 수익이 늘어납니다.')}</small>` : '',
   ].filter(Boolean).join('<br>');
-  infoModal('🌙 오프라인 수익 보고서', `${rows}<br><small style="color:var(--dim)">HP는 마을에서 정비한 것으로 처리됩니다.</small>`);
+  infoModal(txt('ui.offline.title', '🌙 오프라인 수익 보고서'), `${rows}<br><small style="color:var(--dim)">${txt('ui.offline.footer', 'HP는 마을에서 정비한 것으로 처리됩니다.')}</small>`);
 }
 
 function victory() {
@@ -3269,7 +3323,7 @@ function defeat() {
   clearAuto(); S.battle.inBattle = false;
   if ($('raid-timer-banner')) $('raid-timer-banner').style.display = 'none';
   sfx('lose');
-  if (S.autoFarm?.on) stopAutoFarm('패배 (자동 파밍 중지)');
+  if (S.autoFarm?.on) stopAutoFarm(txt('ui.autofarm.reason.defeat', '패배 (자동 파밍 중지)'));
   const h = S.hero, loss = Math.floor(h.gold * 0.08); h.gold -= loss; h.hp = stats().maxHp;
   PD.emit('defeat', { monster: S.battle.monster, stage: S.stage });
   heroBattle.play('death', { hold: true }); fxHeroDeath(); save();
@@ -3335,7 +3389,7 @@ document.addEventListener('keydown', (e) => {
 // ===== 시작 =====
 function init() {
   const steps = [
-    () => load(),
+    () => { load(); applyLang(); },
     () => { OFFLINE = runOfflineProgress(); },
     () => drawTitleBackdrop($('title-bg')),
     () => drawForgeBackdrop($('forge-bg')),

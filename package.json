@@ -5,8 +5,11 @@
   "description": "PIXEL DUNGEON - 16-bit retro idle RPG (web build). Pure-formula tests and CI.",
   "scripts": {
     "test": "node --test",
-    "check": "node --check game.js && node --check pixelfx.js && node --check src/core/formulas.js",
-    "serve": "python3 -m http.server 8080"
+    "check": "node --check game.js && node --check pixelfx.js && node --check src/core/formulas.js && node --check src/i18n/index.js && node --check src/i18n/strings.js",
+    "serve": "python3 -m http.server 8080",
+    "i18n": "node tools/extract-i18n.js && node tools/build-i18n.js"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }
