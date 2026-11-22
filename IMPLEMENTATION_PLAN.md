@@ -58,7 +58,7 @@
 
 ## Estado de ejecución / Execution status
 
-**Última actualización / Last update:** 2026-11-22 · rama / branch `arena/1ad2ad83-pixeldungeon-simple`
+**Última actualización / Last update:** 2026-11-22 · rama / branch `arena/abed505b-pixeldungeon-simple`
 
 | Tarea / Task | Estado / Status | Evidencia / Evidence |
 |---|---|---|
@@ -86,11 +86,13 @@
 | **3.3** Patrones de jefe + estados (B8/A1.7) | ✅ Hecho / Done | `makeMonster()` asigna `pattern` (escudo/회복/소환/격노), `CF.patternStep()` y `CF.statusTick()`; veneno · 화상 · 빙결 · 기절 aplicados por habilidades (jefes resisten la mitad); `monsterAct() + battleLoop()` comparten el turno enemigo entre batalla animada, 스킵 y simulación offline |
 
 | **3.4a** Inventario de equipo — datos (B5) | ✅ Hecho / Done | `S.inventory = {swords:[], armors:[]}` (20 por tipo, ids y favoritos), los drops ya no se venden solos: suben al inventario y el equipo anterior se guarda; `equipFromInventory()` mueve la forja (1.1) y devuelve la pieza anterior a la bolsa; `sellInventoryItem()` protege favoritos; `sanitize()` migra saves viejos, corta a 20 y descarta entradas corruptas |
-| **3.4b** Inventario de equipo — UI (B5) | ⏳ Pendiente / Pending | Modal con comparar (Δ ATK/DEF/DPS), equipar, vender y marcar favorito |
+| **3.4b** Inventario de equipo — UI (B5) | ✅ Hecho / Done | Modal `🎒 장비 인벤토리` (fila 23) con pestañas 검/방어구, **Δ ATK/DEF y Δ DPS** por pieza, botones equipar / vender / favorito (★), contador n/20 y estado del set; `CF.setBonus()` y `CF.sellValue()` puros con tests; vender equipo 전설/신화 pide confirmación y paga llaves |
 
-**Pendiente / Pending:** **3.4b** (UI del inventario) y las fases i18n **T2/T3**.
+**Pendiente / Pending:** solo las fases de traducción **T2/T3** (+T4/T5) y los Sprints 4–5.
 
-**Lecciones / Lessons:** la suite pasó de 26 a **45 tests**; los cambios de UI se validan sin navegador con el arnés `vm` + DOM falso (`undefined`/`NaN` y handlers `onclick` inexistentes se detectan en CI).
+> **Nota de alcance 3.4b:** el plan pedía bonus de set 2/4 piezas (+5 %/+12 %). Con dos ranuras de equipo (검 + 갑옷) el umbral 4/4 no existe, así que el bonus queda: **misma 등급 en ambas piezas → +5 %**, **par 신화 → +12 %** (el "set completo"). Un 4/4 real necesita más ranuras (anillo/amuleto) → queda como candidato a **3.4c**.
+
+**Lecciones / Lessons:** la suite pasó de 26 a **69 tests**; los cambios de UI se validan sin navegador con el arnés `vm` + DOM falso (`undefined`/`NaN` y handlers `onclick` inexistentes se detectan en CI).
 
 > Cada tarea se puede verificar con `npm test`; los cambios de UI se revisan en el preview local (`npm run serve`).
 

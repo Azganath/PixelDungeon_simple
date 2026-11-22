@@ -50,6 +50,7 @@
 * **프레스티지 / 환생 (v1.3):** Stage 100 도달 후 환생하면 별 1개(+10% 전체 배율, 최대 20개 ×3)를 얻고 장비·훈련·룬이 초기화됩니다. 도감·업적·펫·골드·열쇠는 유지됩니다.
 * **로드아웃 & 자동 시전 규칙 (v1.4):** `🎯 로드아웃`에서 스킬 4개·펫·배속을 3개 프리셋으로 저장/적용하고, 스킬마다 `항상 / 보스전만 / 마무리(50%↓)` 규칙을 지정할 수 있습니다. 규칙은 AUTO·⚡스킵·오프라인에도 동일하게 적용됩니다.
 * **보스 패턴 & 상태이상 (v1.4):** 10층 단위 보스가 보호막(🛡️)·자가 회복(💚)·하수인 소환(👥)·격노(😡)를 사용합니다. 스킬 적중 시 ☠️독·🔥화상·❄️빙결·💫기절이 확률로 걸리고, 빙결/기절은 보스의 턴을 뺏습니다.
+* **장비 인벤토리 UI (v1.6):** 마을 23번 `🎒 장비 인벤토리`에서 보관한 검·방어구를 비교(Δ 공격력/방어력/DPS)하고, 장착·판매·즐겨찾기할 수 있습니다. 같은 등급의 검+갑옷을 장착하면 **세트 효과 +5 %**(신화 쌍은 **+12 %**). 전설/신화 판매는 확인 후 열쇠로 지급됩니다.
 * **장비 인벤토리 (v1.5, 데이터):** 뽑기에서 나온 장비가 자동 판매되지 않고 **최대 20칸** 인벤토리에 보관됩니다. 더 높은 등급이 나오면 즉시 장착되고 이전 장비는 인벤토리로 돌아가며, 강화·초월 진행도는 그대로 따라옵니다. 가득 차면 자동 판매됩니다. (비교·장착 화면은 다음 업데이트)
 * **밸런스 (v1.3):** 훈련 비용이 레벨당 2%씩 증가하고, Lv.100 이후 훈련 효과는 점감합니다. 승급은 첫 1회 무료, 이후 5만 G / 20만 G. 곡선은 `docs/BALANCE.md` 에 시뮬레이션 결과로 기록됩니다.
 
@@ -82,6 +83,7 @@ PixelDungeon_simple is a static, dependency-free 16-bit idle RPG. There is no bu
 * i18n: `npm run i18n` re-extracts every Korean string (`src/i18n/ko.auto.json`) and rebuilds `src/i18n/strings.js` from the curated `ko/en/es` dictionaries. The runtime (`src/i18n/index.js`) exposes `t()`, `setLang()` and a Korean fallback, so missing translations never break the layout.
 * CI (`.github/workflows/ci.yml`) runs both on every push and pull request.
 * **New in v1.1:** save export/import (code or `.json`), HP persists between battles (30% heal on victory), DPS meter in the menu/character/forge screens, stoppable auto-forge with a `+10`/`MAX` goal, and in-game modals instead of native `alert()`/`confirm()` dialogs.
+* **New in v1.6:** the town menu has a `🎒 Gear Inventory` screen: compare stored swords/armors (Δ ATK/DEF/DPS), equip, sell or favourite them. Matching grades on sword + armor grant a **+5 % set bonus** (**+12 %** for a mythic pair), and selling 전설/신화 gear asks for confirmation and pays keys.
 * **New in v1.5 (data layer):** gear drops are no longer auto-sold — up to 20 swords/armors are stored with ids and favourites, the previous piece returns to the bag with its forge progress, and overflow falls back to selling. (Compare/equip UI lands in 3.4b.)
 * **New in v1.4:** 3 loadout presets (skills/pet/speed/rules) with per-skill auto-cast rules (`always`/`boss only`/`finisher <50 %`) honoured by AUTO, skip mode and the offline simulation; boss patterns (shield, self-heal, minions, enrage) and status effects (poison, burn, freeze, stun) resolved by one shared monster-turn resolver.
 * **New in v1.3:** prestige/rebirth (Stage 100 → +10 % per star, up to ×3, resets gear/training/runes but keeps codex, achievements, pets, gold and keys) and rebalanced curves (training costs +2 %/level, soft cap after Lv.100, rank-ups free once then 50k/200k) documented in `docs/BALANCE.md` and guarded by `npm run balance:check`.

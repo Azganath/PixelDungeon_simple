@@ -482,12 +482,14 @@ function stats() {
   const stars = Math.min(20, Math.max(0, (S.prestige && S.prestige.stars) | 0));
   const PM = CF.prestigeMult(stars);
   const v = (x) => x || 0;
+  const SET = CF.setBonus(h.sword.grade, h.armor.grade);
+  const setMult = 1 + SET.pct / 100;
   const all = v(R.allPct) + v(Cos.allPct) + v(CR.allPct);
   const finAmp = (1 + v(CR.finalDmgPct) / 100);
   const out = {
-    maxHp: Math.floor((140 + CF.trainSum(75, L.maxHp) + v(R.flatHp) + U.hp) * (1 + (v(C.hpPct) + v(Cos.hpPct) + v(CR.hpPct) + v(P.hpPct) + all) / 100) * PM),
-    atk: Math.floor((14 + CF.trainSum(13, L.atk) + equipBonus('sword') + h.bossSword.attackBonus + v(R.flatAtk) + U.atk) * (1 + (v(C.atkPct) + v(Cos.atkPct) + v(CR.atkPct) + v(P.atkPct) + all) / 100) * finAmp * PM),
-    def: Math.floor((5 + CF.trainSum(13, L.def) + equipBonus('armor') + h.bossArmor.defenseBonus + v(R.flatDef) + U.def) * (1 + (v(C.defPct) + v(Cos.defPct) + v(CR.defPct) + v(P.defPct) + all) / 100) * PM),
+    maxHp: Math.floor((140 + CF.trainSum(75, L.maxHp) + v(R.flatHp) + U.hp) * (1 + (v(C.hpPct) + v(Cos.hpPct) + v(CR.hpPct) + v(P.hpPct) + all) / 100) * PM * setMult),
+    atk: Math.floor((14 + CF.trainSum(13, L.atk) + equipBonus('sword') + h.bossSword.attackBonus + v(R.flatAtk) + U.atk) * (1 + (v(C.atkPct) + v(Cos.atkPct) + v(CR.atkPct) + v(P.atkPct) + all) / 100) * finAmp * PM * setMult),
+    def: Math.floor((5 + CF.trainSum(13, L.def) + equipBonus('armor') + h.bossArmor.defenseBonus + v(R.flatDef) + U.def) * (1 + (v(C.defPct) + v(Cos.defPct) + v(CR.defPct) + v(P.defPct) + all) / 100) * PM * setMult),
     critRate: Math.min(100, 20 + L.critRate * 1.5 + v(C.critRate) + v(Cos.critRate) + v(CR.critRate)),
     critDmg: Math.floor(150 + L.critDmg * 8 + v(C.critDmg) + v(R.critDmg) + v(Cos.critDmg) + v(CR.critDmg)),
     bossDmg: Math.floor(Math.min(1000, L.bossDmg) * 5 + v(C.bossDmg) + v(R.bossDmg) + v(Cos.bossDmg) + v(CR.bossDmg)),
@@ -496,6 +498,7 @@ function stats() {
     skillAmp: r1(v(C.skillPct) + v(R.skillPct) + v(Cos.skillPct)),
     runeMult: 1 + U.fin / 100,
     potion: Math.min(0.95, 0.40 + v(R.potionPct) / 100),
+    setPct: SET.pct, setIcon: SET.icon,
   };
   _statsCache = out; _statsCacheV = _statsV;
   return out;
@@ -1976,6 +1979,7 @@ function renderMenu(st) {
     mb(5, '', '🔨 검 초월 강화 &amp; 승급', '+10강 &amp; 별 초월 &amp; 전설/신화 승급 &amp; 무지개별', "goForge('sword')"),
     mb(6, '', '🛡️ 방어구 초월 강화 &amp; 승급', '+10강 &amp; 별 초월 &amp; 전설/신화 승급 &amp; 무지개별', "goForge('armor')"),
     mb(7, '', '📜 캐릭터 정보', '장비 &amp; 룬 &amp; 상세 스탯', "switchScene('scene-character')"),
+    mb('🎒', 'gold', txt('ui.inv.menu', '🎒 장비 인벤토리'), invMenuSub(), 'openInventory()'),
     mb(8, 'purple', '⚡ 스킬 장착 &amp; 옵션 재조정', `장착 ${eqN}/4 · ${h.autoCast ? '자동 시전 (AUTO)' : '수동 선택 (MANUAL)'}`, 'openSkills()'),
     mb(9, 'gold', '📖 모험가 도감 &amp; 수집 보상', `수집 ${codexCount()}/${codexTotal()} (${Math.floor(codexCount() / codexTotal() * 100)}%) · 구간별 보상`, 'openCodex()'),
     mb(10, 'cyan', '🏺 고대 유물 발굴 (최대 Lv.100)', `총 유물 Lv.${relicSum} / 1000`, 'openRelics()'),
@@ -3113,16 +3117,115 @@ function equipFromInventory(type, id) {
 /** Sells one stored piece (favourites are protected). Returns the gold granted. */
 function sellInventoryItem(type, id) {
   const list = invOf(type), i = list.findIndex(e => e.id === id);
-  if (i < 0) return 0;
+  if (i < 0) return { ok: false, gold: 0, keys: 0 };
   const item = list[i];
-  if (item.fav) return 0;
+  if (item.fav) return { ok: false, gold: 0, keys: 0 };
   list.splice(i, 1);
-  const gold = Math.max(1, Math.floor((item.sellPrice || 0) * 0.6));
-  S.hero.gold += gold;
-  save(); refreshAll();
-  return gold;
+  const v = CF.sellValue(SELL[item.grade] || { gold: item.sellPrice || 0 });
+  S.hero.gold += v.gold; S.hero.keys += v.keys;
+  save(); bumpStats(); refreshAll();
+  return { ok: true, gold: v.gold, keys: v.keys, item };
 }
 const invCount = (type) => invOf(type).length;
+function invMenuSub() {
+  const set = CF.setBonus(S.hero.sword.grade, S.hero.armor.grade);
+  return txt('ui.inv.menuSub', '검 {a}/{max} · 갑옷 {b}/{max} · 세트 +{p}%', { a: invCount('sword'), b: invCount('armor'), max: INV_MAX, p: set.pct });
+}
+
+// ----- 인벤토리 UI (3.4b) -----
+const invTypeLabel = (type) => (type === 'sword'
+  ? txt('ui.inv.swords', '🗡️ 검')
+  : txt('ui.inv.armors', '🛡️ 방어구'));
+const invItemName = (type, e) => (type === 'sword' ? swordTitle(e) : armorTitle(e));
+
+/** Δ stat (and Δ DPS for swords) between a stored piece and the equipped one. */
+function invDelta(type, item) {
+  const st = stats(), cur = S.hero[type];
+  const dStat = equipBonus(type, item) - equipBonus(type, cur);
+  const dps = type === 'sword' ? dpsOf(st, st.atk + dStat) - dpsOf(st) : 0;
+  return { stat: dStat, dps: Math.round(dps), better: dStat > 0 };
+}
+const signed = (n) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `-${fmt(-n)}` : '±0');
+const deltaColor = (n) => (n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--sub)');
+
+function invRowHtml(type, item) {
+  const d = invDelta(type, item);
+  const g = item.grade, set = CF.GEAR_SETS[g];
+  const setTxt = set ? ` · ${set.icon} ${txt('ui.inv.setTag', '세트')}` : '';
+  const dpsTxt = type === 'sword' && d.dps ? ` · DPS <b style="color:${deltaColor(d.dps)}">${signed(d.dps)}</b>` : '';
+  const fav = item.fav ? '★' : '☆';
+  const id = item.id;
+  return `<div class="mrow"><div class="l">
+      <b style="color:${gcol(g)}">${invItemName(type, item)} ${enhanceStatus(item)}</b>
+      <small style="color:var(--sub)">${type === 'sword' ? 'ATK' : 'DEF'} +${fmt(equipBonus(type, item))} ·
+        <b style="color:${deltaColor(d.stat)}">${signed(d.stat)}</b>${dpsTxt}${setTxt}</small></div>
+    <div class="bts">
+      <button class="btn mini ${d.better ? 'green' : ''}" title="${txt('ui.inv.equip', '장착')}" onclick="invEquip('${type}','${id}')">⚔️</button>
+      <button class="btn mini ${item.fav ? 'gold' : ''}" title="${txt('ui.inv.favHint', '즐겨찾기 (판매 방지)')}" onclick="invFav('${type}','${id}')">${fav}</button>
+      <button class="btn mini red" title="${txt('ui.inv.sell', '판매')}" onclick="invSell('${type}','${id}')">🪙</button>
+    </div></div>`;
+}
+
+function inventoryHtml() {
+  const type = UI.invTab === 'armor' ? 'armor' : 'sword';
+  const list = invOf(type);
+  const sorted = [...list].sort((a, b) => rankOf(b.grade) - rankOf(a.grade)
+    || totalSteps(b) - totalSteps(a) || equipBonus(type, b) - equipBonus(type, a));
+  const cur = S.hero[type];
+  const set = CF.setBonus(S.hero.sword.grade, S.hero.armor.grade);
+  const setTxt = set.pct > 0
+    ? txt('ui.inv.setActive', '{icon} 세트 효과 +{p}% (검·갑옷 등급 일치)', { icon: set.icon, p: set.pct })
+    : txt('ui.inv.setNone', '같은 등급의 검+갑옷을 장착하면 세트 효과 (+5%, 신화 +12%)');
+  const tabs = ['sword', 'armor'].map(t => `<button class="btn mini ${t === type ? 'green' : ''}" onclick="invTab('${t}')">${invTypeLabel(t)} ${invCount(t)}/${INV_MAX}</button>`).join('');
+  const rows = sorted.length
+    ? sorted.map(it => invRowHtml(type, it)).join('')
+    : `<small style="color:var(--sub)">${txt('ui.inv.empty', '비어 있습니다. 상자에서 장비를 뽑으면 이곳에 보관됩니다.')}</small>`;
+  return `<div class="strip"><span>${invTypeLabel(type)} <b>${list.length}/${INV_MAX}</b></span><span>${setTxt}</span></div>
+  <div class="bts" style="margin:6px 0">${tabs}</div>
+  <div class="mrow"><div class="l"><b style="color:${gcol(cur.grade)}">${txt('ui.inv.equipped', '장착 중')}: ${invItemName(type, cur)} ${enhanceStatus(cur)}</b>
+    <small style="color:var(--sub)">${type === 'sword' ? 'ATK' : 'DEF'} +${fmt(equipBonus(type, cur))}</small></div>
+    <div class="bts"><button class="btn mini cyan" onclick="goForge('${type}')">🔨 ${txt('ui.inv.forge', '강화')}</button></div></div>
+  <div class="mlist">${rows}</div>
+  <small style="color:var(--sub)">${txt('ui.inv.note', '장착하면 기존 장비는 인벤토리로 돌아가고 강화·초월 진행도는 그대로 따라옵니다. 즐겨찾기(★)한 장비는 판매되지 않습니다. 판매 시 드랍 가치의 60%를 받습니다.')}</small>
+  <button class="btn full" onclick="closeModal('inventory')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function refreshInv() { refreshModal('inventory', invTitle(), inventoryHtml()); }
+const invTitle = () => txt('ui.inv.title', '🎒 장비 인벤토리');
+function invTab(type) { UI.invTab = type === 'armor' ? 'armor' : 'sword'; refreshInv(); }
+function openInventory(type) { UI.invTab = type === 'armor' || type === 'sword' ? type : (UI.invTab || 'sword'); openModal('inventory', 620, invTitle(), inventoryHtml()); }
+function invEquip(type, id) {
+  const it = invOf(type).find(e => e.id === id);
+  const name = it ? invItemName(type, it) : '';
+  const r = equipFromInventory(type, id);
+  if (!r.ok) return;
+  toast(txt('ui.inv.equippedToast', '✅ {name} 장착! {tail}', { name, tail: r.sold ? txt('ui.inv.oldSold', '이전 장비 판매 +{g}G', { g: fmt(r.sold) }) : txt('ui.inv.oldStored', '이전 장비는 인벤토리에 보관했습니다.') }), 'ok');
+  refreshInv();
+}
+function invFav(type, id) {
+  const it = invOf(type).find(e => e.id === id);
+  if (!it) return;
+  it.fav = !it.fav;
+  save(); refreshInv();
+}
+function invSell(type, id) {
+  const it = invOf(type).find(e => e.id === id);
+  if (!it) return;
+  if (it.fav) return toast(`★ ${txt('ui.inv.favBlock', '즐겨찾기한 장비는 판매할 수 없습니다. 먼저 ★를 해제하세요.')}`, 'err');
+  const go = () => {
+    const r = sellInventoryItem(type, id);
+    if (!r.ok) return;
+    const got = r.keys ? txt('ui.inv.sellKeys', '🗝️ 열쇠 +{n}개', { n: r.keys }) : txt('ui.inv.sellGold', '🪙 +{n}G', { n: fmt(r.gold) });
+    toast(`${txt('ui.inv.soldToast', '판매 완료')} · ${got}`, 'ok');
+    refreshInv();
+  };
+  const reward = SELL[it.grade] || {};
+  if (!reward.keys) return go();
+  confirmModal({
+    id: 'invConfirm', title: txt('ui.inv.sellTitle', '🗑️ 장비 판매'),
+    body: txt('ui.inv.sellBody', '{name} {grade}을(를) 판매할까요?<br><small style="color:var(--sub)">판매 시 드랍 가치의 60%를 받습니다.</small>', { name: invItemName(type, it), grade: it.grade }),
+    confirmLabel: txt('ui.inv.sell', '판매'), danger: true, onConfirm: go,
+  });
+}
 
 // ===== 로드아웃 & 자동 시전 규칙 (3.2) =====
 const LOADOUT_SLOTS = 3;

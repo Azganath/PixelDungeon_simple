@@ -271,3 +271,23 @@ test('autoCastAllowed: always, bossOnly and burst rules', () => {
   assert.equal(CF.autoCastAllowed('burst', { hp: 80, maxHp: 100 }), false);
   assert.equal(CF.autoCastAllowed('burst', { hp: 50, maxHp: 100 }), true, '50 % counts as burst');
 });
+
+// ----- 3.4b: set bonus + manual sale value -----
+test('3.4b — gear sets only match real named grades, mythic pairs pay 12%', () => {
+  assert.deepEqual(CF.setBonus('영웅', '영웅'), { pct: 5, id: 'lumen', icon: '✨' });
+  assert.equal(CF.setBonus('전설', '전설').pct, 5);
+  assert.equal(CF.setBonus('신화', '신화').pct, 12, 'a full mythic pair is the "complete set"');
+  assert.equal(CF.setBonus('영웅', '전설').pct, 0, 'mixed grades break the set');
+  assert.equal(CF.setBonus('일반', '일반').pct, 0, 'starter iron is not a set');
+  assert.equal(CF.setBonus('없음', '없음').pct, 0);
+  assert.equal(CF.setBonus(undefined, '영웅').pct, 0, 'missing grades never throw');
+});
+
+test('3.4b — selling from the bag pays 60% and keeps keys for key-grade gear', () => {
+  assert.deepEqual(CF.sellValue({ gold: 95 }), { gold: 57, keys: 0 });
+  assert.deepEqual(CF.sellValue({ gold: 30 }), { gold: 18, keys: 0 });
+  assert.deepEqual(CF.sellValue({ keys: 3 }), { gold: 0, keys: 2 });
+  assert.deepEqual(CF.sellValue({ keys: 8 }), { gold: 0, keys: 5 });
+  assert.deepEqual(CF.sellValue({}), { gold: 0, keys: 0 });
+  assert.deepEqual(CF.sellValue(null), { gold: 0, keys: 0 });
+});
