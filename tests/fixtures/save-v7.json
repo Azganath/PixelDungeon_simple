@@ -1,0 +1,39 @@
+{
+  "hero": {
+    "name": "Foer",
+    "maxHp": 140,
+    "hp": 97,
+    "baseAtk": 14,
+    "baseDef": 5,
+    "gold": 18450,
+    "keys": 12,
+    "potionCooldown": 0,
+    "statLevels": { "atk": 4, "def": 2, "maxHp": 1, "critRate": 3, "critDmg": 5, "bossDmg": 0, "dropRate": 1 },
+    "sword": { "name": "낡은 철검", "grade": "일반", "baseStat": 6, "sellPrice": 30, "enhanceLevel": 7, "starTier": 0, "starCount": 0, "pityBonus": 12.5 },
+    "armor": { "name": "가죽 갑옷", "grade": "희귀", "baseStat": 9, "sellPrice": 95, "enhanceLevel": 3, "starTier": 0, "starCount": 0, "pityBonus": 0 },
+    "bossSword": { "name": "없음", "grade": "없음", "attackBonus": 0, "sellPrice": 0 },
+    "bossArmor": { "name": "없음", "grade": "없음", "defenseBonus": 0, "sellPrice": 0 },
+    "skills": [
+      { "name": "화염 강타", "grade": "일반", "baseDmg": 100, "atkRatio": 1, "level": 3, "maxCooldown": 2, "cooldown": 0, "icon": "🔥", "specialOption": null }
+    ],
+    "equippedSkills": ["화염 강타"],
+    "autoCast": true,
+    "runeCounts": { "power": [4, 1, 0, 0, 0, 0, 0, 0, 0], "vitality": [2, 0, 0, 0, 0, 0, 0, 0, 0], "guard": [0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    "rainbowShards": 2,
+    "costumes": { "owned": ["skin_default", "aura_none", "circle_none"], "skin": "skin_default", "aura": "aura_none", "circle": "circle_none" },
+    "pets": { "owned": {}, "equipped": null }
+  },
+  "chestLevel": 3,
+  "chestExp": 4,
+  "codex": { "swords": {}, "armors": {}, "skills": {}, "monsters": {}, "pets": {}, "costumes": {} },
+  "codexRewards": {},
+  "achievements": { "kills": 128, "enhances": 41, "goldSpent": 92000, "raids": 0, "claimed": {} },
+  "relics": {},
+  "stage": 23,
+  "maxStage": 27,
+  "repeatStage": null,
+  "world": "normal",
+  "battleSpeed": 2,
+  "forgeTarget": "sword",
+  "battle": { "inBattle": false, "isRaid": false, "raidTurnsLeft": 15, "monster": null, "turn": 1, "isPlayerTurn": true }
+}

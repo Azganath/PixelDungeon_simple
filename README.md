@@ -1,5 +1,7 @@
 # PixelDungeon_simple
 
+[![CI](https://github.com/Azganath/PixelDungeon_simple/actions/workflows/ci.yml/badge.svg)](https://github.com/Azganath/PixelDungeon_simple/actions/workflows/ci.yml)
+
 # ⚔️ [게임 제목]
 
 웹 브라우저에서 바로 즐길 수 있는 방치형·단조 성장 RPG입니다.  
@@ -39,3 +41,32 @@
 
 * **저장 방식:** 게임 진행 데이터는 현재 사용 중인 브라우저(로컬 스토리지)에 자동 저장됩니다. 시크릿 모드를 사용하거나 브라우저 캐시/쿠키를 삭제하면 데이터가 초기화될 수 있습니다.
 * **테스트 버전:** 밸런스 조정 및 기능 추가가 수시로 이루어질 수 있습니다. 버그 제보나 피드백은 언제든 환영합니다!
+* **세이브 백업 (v1.1):** 타이틀/마을의 **[💾 세이브]** 버튼으로 진행 상황을 코드나 `.json` 파일로 내보낼 수 있습니다. 다른 기기에서 **[📥 가져오기]** 로 그대로 복원됩니다.
+* **전투 사이 HP 유지 (v1.1):** 전투에서 잃은 HP는 다음 전투로 이어지며, 승리 시 최대 HP의 30%만 회복됩니다. 물약·흡혈·방어력이 실제로 의미를 갖습니다. (패배 시에는 마을에서 완전 회복)
+
+---
+
+## 🛠️ 개발 / Development
+
+게임은 빌드 과정 없이 정적 파일로 동작합니다 (`index.html` + `game.js` + `pixelfx.js`).
+
+* **수식 모듈:** 모든 데미지·비용·확률 공식은 `src/core/formulas.js` 에 있으며, 브라우저(`window.PDCF`)와 테스트가 **같은 코드**를 사용합니다.
+* **테스트:** `npm test` (Node 18+, 의존성 설치 불필요 — `node --test` 사용)
+* **문법 검사:** `npm run check`
+* **로컬 실행:** `npm run serve` 후 <http://localhost:8080> 접속
+* **CI:** 모든 push/PR 에서 문법 검사와 테스트가 자동 실행됩니다 (`.github/workflows/ci.yml`).
+
+```
+src/core/formulas.js   순수 공식 (데미지·비용·상자 확률·DPS)
+tests/*.test.js        단위 테스트 + game.js 통합 스모크 테스트
+tests/fixtures/        세이브 마이그레이션 픽스처 (save-v7.json)
+```
+
+### English
+
+PixelDungeon_simple is a static, dependency-free 16-bit idle RPG. There is no build step.
+
+* `src/core/formulas.js` holds every pure formula (damage, costs, chest odds, DPS) and is shared by the browser (`window.PDCF`) and the test suite.
+* `npm test` runs the Node test runner (no `npm install` needed); `npm run check` runs syntax checks; `npm run serve` starts a local static server on port 8080.
+* CI (`.github/workflows/ci.yml`) runs both on every push and pull request.
+* **New in v1.1:** save export/import (code or `.json`), HP persists between battles (30% heal on victory), DPS meter in the menu/character/forge screens, stoppable auto-forge with a `+10`/`MAX` goal, and in-game modals instead of native `alert()`/`confirm()` dialogs.

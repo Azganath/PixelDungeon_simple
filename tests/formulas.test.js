@@ -1,0 +1,136 @@
+'use strict';
+/*
+ * Formula tests — tarea 1.0 del plan de implementación.
+ * Run with: npm test   (node --test tests/)
+ */
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const CF = require('../src/core/formulas.js');
+
+const GRADES = ['일반', '희귀', '영웅', '전설', '신화'];
+
+test('dmgReduction: monotonic, capped at 75%', () => {
+  assert.equal(CF.dmgReduction(0), 0);
+  assert.equal(CF.dmgReduction(1500), 0.5);
+  assert.equal(CF.dmgReduction(100000), 0.75);
+  assert.ok(CF.dmgReduction(500) < CF.dmgReduction(900));
+});
+
+test('monsterTaken: applies DEF and defense-ignore', () => {
+  assert.equal(CF.monsterTaken(100, 0), 100);
+  assert.equal(CF.monsterTaken(100, 300), 50);
+  assert.equal(CF.monsterTaken(100, 300, 100), 90); // ignore capped at 90%
+  assert.equal(CF.monsterTaken(0, 300), 1);          // never below 1
+});
+
+test('heroTaken: uses hero DEF reduction', () => {
+  assert.equal(CF.heroTaken(100, 0), 100);
+  assert.equal(CF.heroTaken(100, 1500), 50);
+  assert.equal(CF.heroTaken(1, 1500), 1);
+});
+
+test('trainCost: known values and growth', () => {
+  const t = { base: 100, step: 50 };
+  assert.equal(CF.trainCost(t, 0), 100);
+  assert.equal(CF.trainCost(t, 1), 168);
+  assert.equal(CF.trainCost(t, 10), 1031);
+  assert.ok(CF.trainCost(t, 101) > CF.trainCost(t, 100));
+});
+
+test('engraveCost: 1.65x per level', () => {
+  assert.equal(CF.engraveCost(300, 0), 300);
+  assert.equal(CF.engraveCost(300, 1), 495);
+  assert.equal(CF.engraveCost(12000, 5), 146757);
+});
+
+test('totalSteps: forge progression table', () => {
+  assert.equal(CF.totalSteps({ starTier: 0, enhanceLevel: 7 }), 7);
+  assert.equal(CF.totalSteps({ starTier: 1, starCount: 3 }), 13);
+  assert.equal(CF.totalSteps({ starTier: 2, starCount: 2 }), 17);
+  assert.equal(CF.totalSteps({ starTier: 3, starCount: 5 }), 25);
+  assert.equal(CF.totalSteps({ starTier: 4, starCount: 1 }), 26);
+  assert.equal(CF.totalSteps({ starTier: 5, starCount: 1 }), 35);
+});
+
+test('isMaxed: grade-dependent ceiling', () => {
+  assert.equal(CF.isMaxed({ grade: '일반', starTier: 3, starCount: 5 }), true);
+  assert.equal(CF.isMaxed({ grade: '일반', starTier: 3, starCount: 4 }), false);
+  assert.equal(CF.isMaxed({ grade: '영웅', starTier: 3, starCount: 5 }), true); // 대기: 승급 가능
+  assert.equal(CF.isMaxed({ grade: '신화', starTier: 3, starCount: 5 }), false);
+  assert.equal(CF.isMaxed({ grade: '신화', starTier: 5 }), true);
+});
+
+test('equipStat: grows with steps and rainbow multiplier', () => {
+  const q = { sStep: 2 };
+  assert.equal(CF.equipStat({ baseStat: 10, starTier: 0, starCount: 0, enhanceLevel: 10 }, q, true), 30);
+  assert.equal(CF.equipStat({ baseStat: 10, starTier: 5, starCount: 1, enhanceLevel: 10 }, q, true), 280);
+});
+
+test('enhanceInfo: cost grows, chance floors at 12% and pity is capped', () => {
+  const q = { cost: 120, fail: 6 };
+  const a = CF.enhanceInfo({ starTier: 0, enhanceLevel: 0, pityBonus: 0 }, q);
+  const b = CF.enhanceInfo({ starTier: 0, enhanceLevel: 9, pityBonus: 0 }, q);
+  assert.equal(a.cost, 120);
+  assert.ok(b.cost > a.cost);
+  const late = CF.enhanceInfo({ starTier: 3, starCount: 5, pityBonus: 0 }, q);
+  assert.ok(late.base >= 12);
+  const pity = CF.enhanceInfo({ starTier: 0, enhanceLevel: 0, pityBonus: 40 }, q);
+  assert.equal(pity.final, Math.min(100, CF.r1(pity.base + 40)));
+});
+
+test('rollGrade: sword chest below Lv.10 never drops legendary/mythic', () => {
+  const rates = [60, 30, 10, 4, 1];
+  for (let i = 0; i < 500; i++) {
+    const g = CF.rollGrade('sword', rates, false, Math.random, GRADES);
+    assert.ok(g === '일반' || g === '희귀' || g === '영웅', `unexpected grade ${g}`);
+  }
+});
+
+test('rollGrade: Lv.10 chest unlocks legendary/mythic with tiny odds', () => {
+  const rates = [60, 30, 10, 4, 1];
+  // rng just under 100 -> last bucket (mythic) at Lv.10
+  assert.equal(CF.rollGrade('sword', rates, true, () => 0.99999, GRADES), '신화');
+  assert.equal(CF.rollGrade('sword', rates, true, () => 0, GRADES), '일반');
+});
+
+test('rollGrade: skill chest keeps legendary/mythic rare', () => {
+  const rates = [60, 30, 10, 4, 1];
+  let legends = 0;
+  const runs = 20000;
+  for (let i = 0; i < runs; i++) if (CF.rollGrade('skill', rates, false, Math.random, GRADES) === '전설') legends++;
+  const pct = (legends / runs) * 100;
+  assert.ok(pct < 2.2, `legendary rate too high: ${pct}%`);
+});
+
+test('estimateDps: basic attack expectation with crits', () => {
+  assert.equal(CF.estimateDps({ atk: 100, critRate: 0, critDmg: 150 }), 100);
+  assert.equal(CF.estimateDps({ atk: 100, critRate: 50, critDmg: 200 }), 150);
+  assert.equal(CF.estimateDps({ atk: 100, critRate: 10, critDmg: 150, runeMult: 1.5 }), 157.5);
+});
+
+test('estimateDps: skills replace basic attacks while ready', () => {
+  assert.equal(CF.estimateDps({ atk: 0, critRate: 0, critDmg: 150, skills: [{ est: 1000, cooldown: 2 }] }), 500);
+  assert.equal(CF.estimateDps({ atk: 100, critRate: 0, critDmg: 150, skills: [{ est: 1000, cooldown: 1 }] }), 1000);
+  // A weaker skill never wins over a stronger ready one.
+  const dps = CF.estimateDps({ atk: 0, critRate: 0, critDmg: 150, skills: [{ est: 900, cooldown: 3 }, { est: 100, cooldown: 1 }] });
+  assert.ok(dps >= 100 && dps <= 900);
+});
+
+test('mergeSave: defaults survive a partial/corrupt save', () => {
+  const def = { hero: { gold: 500, keys: 5 }, stage: 1 };
+  assert.deepEqual(CF.mergeSave(def, null), def);
+  assert.deepEqual(CF.mergeSave(def, { foo: 1 }), def); // no hero -> defaults
+  const merged = CF.mergeSave(def, { hero: { gold: 900 }, stage: 7, extra: true });
+  assert.equal(merged.hero.gold, 900);
+  assert.equal(merged.hero.keys, 5);
+  assert.equal(merged.stage, 7);
+  assert.equal(merged.extra, true);
+});
+
+test('forgeGoalReached: +10 target vs max target', () => {
+  assert.equal(CF.forgeGoalReached({ grade: '일반', starTier: 0, enhanceLevel: 9 }, '+10'), false);
+  assert.equal(CF.forgeGoalReached({ grade: '일반', starTier: 0, enhanceLevel: 10 }, '+10'), true);
+  assert.equal(CF.forgeGoalReached({ grade: '일반', starTier: 1, starCount: 1 }, '+10'), true);
+  assert.equal(CF.forgeGoalReached({ grade: '일반', starTier: 1, starCount: 1 }, 'max'), false);
+  assert.equal(CF.forgeGoalReached({ grade: '신화', starTier: 5 }, 'max'), true);
+});

@@ -1,0 +1,12 @@
+{
+  "name": "pixel-dungeon-simple",
+  "version": "1.1.0",
+  "private": true,
+  "description": "PIXEL DUNGEON - 16-bit retro idle RPG (web build). Pure-formula tests and CI.",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check game.js && node --check pixelfx.js && node --check src/core/formulas.js",
+    "serve": "python3 -m http.server 8080"
+  },
+  "engines": { "node": ">=18" }
+}
