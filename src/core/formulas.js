@@ -38,9 +38,45 @@
     return Math.max(1, Math.floor(raw * (1 - dmgReduction(def))));
   }
 
-  /** Gold cost of the next training level. `t` = {base, step}. */
+  /**
+   * Gold cost of the next training level. `t` = {base, step}.
+   * Grows 2 % per level on top of the 1.38 power curve so late-game training
+   * slows down instead of being a straight line of cheap levels.
+   */
   function trainCost(t, lv) {
-    return Math.floor(t.base + lv * t.step + Math.pow(lv, 1.38) * 18);
+    return Math.floor((t.base + lv * t.step + Math.pow(lv, 1.38) * 18) * Math.pow(1.02, lv));
+  }
+
+  /**
+   * Total stat gained from `lv` training levels. Linear for the first `soft`
+   * levels (so existing saves keep their power) and then diminishing: each extra
+   * level is worth `decay` times the previous one.
+   */
+  function trainSum(inc, lv, soft = 100, decay = 0.995) {
+    const n = Math.max(0, lv | 0), lin = Math.min(n, soft), over = Math.max(0, n - soft);
+    const sat = over === 0 || decay >= 1 ? over : (1 - Math.pow(decay, over)) / (1 - decay);
+    return inc * (lin + sat);
+  }
+
+  /** Gain of the next level (for the training UI preview). */
+  function trainGain(inc, lv) {
+    return trainSum(inc, (lv | 0) + 1) - trainSum(inc, lv | 0);
+  }
+
+  /** Prestige multiplier: +10 % per star, capped at 20 stars (+200 %). */
+  function prestigeMult(stars) {
+    return 1 + 0.1 * Math.min(20, Math.max(0, stars | 0));
+  }
+
+  /**
+   * Gold cost of a rank-up (영웅→전설, 전설→신화). `paid` = rank-ups already
+   * paid for; the very first one is free (tutorial-like).
+   */
+  function rankUpCost(paid, target) {
+    if (!(paid | 0)) return 0;
+    if (target === '전설') return 50000;
+    if (target === '신화') return 200000;
+    return 0;
   }
 
   /** Gold cost of a codex engraving level. `base` = CODEX_ENGRAVE_BASE[grade]. */
@@ -222,7 +258,7 @@
   }
 
   return {
-    r1, dmgReduction, monsterTaken, heroTaken, trainCost, engraveCost, totalSteps,
+    r1, dmgReduction, monsterTaken, heroTaken, trainCost, trainSum, trainGain, prestigeMult, rankUpCost, engraveCost, totalSteps,
     isMaxed, equipStat, enhanceInfo, rollGrade, estimateDps, mergeSave, forgeGoalReached, offlineProgress, farmStopReason, DAILY_POOL, dailyDateKey, pickDailyQuests, streakNext,
   };
 });

@@ -250,13 +250,14 @@ function defaultState() {
     chestLevel: 1, chestExp: 0,
     codex: { swords: {}, armors: {}, skills: {}, monsters: {}, pets: {}, costumes: {} },
     codexRewards: {},
-    achievements: { kills: 0, enhances: 0, goldSpent: 0, raids: 0, claimed: {} },
+    achievements: { kills: 0, enhances: 0, goldSpent: 0, raids: 0, rankUps: 0, claimed: {} },
     relics: {},
     stage: 1, maxStage: 1, repeatStage: null, world: 'normal', battleSpeed: 1, forgeTarget: 'sword', lastSeen: 0,
     autoFarm: { on: false, done: 0, stopHpPct: 30, stopGold: 0, stopKeys: 0, maxBattles: 0 },
     quests: { tutorial: { done: [] }, daily: { date: '', progress: {}, claimed: false }, streak: { count: 0, last: '' } },
     audio: { sfx: true, vol: 0.5 },
     lang: 'ko',
+    prestige: { stars: 0 },
     battle: { inBattle: false, isRaid: false, raidTurnsLeft: 15, monster: null, turn: 1, isPlayerTurn: true },
   };
 }
@@ -349,6 +350,8 @@ function sanitize() {
   S.audio.sfx = !!S.audio.sfx;
   S.audio.vol = Math.max(0, Math.min(1, Number(S.audio.vol) || 0));
   checkDailyReset();
+  S.prestige = { ...def.prestige, ...(S.prestige || {}) };
+  S.prestige.stars = Math.min(20, Math.max(0, S.prestige.stars | 0));
   if (typeof applyLang === 'function') applyLang();
   if (![1, 2, 'skip'].includes(S.battleSpeed)) S.battleSpeed = 1;
   if (!WORLDS.some(w => w.id === S.world)) S.world = 'normal';
@@ -446,18 +449,20 @@ function stats() {
   if (_statsCache && _statsCacheV === _statsV) return _statsCache;
   const C = codexBonus(), R = relicBonus(), U = runeBonus(), Cos = costumeBonus(), CR = codexRewardBonus(), P = petBonus();
   const L = S.hero.statLevels, h = S.hero;
+  const stars = Math.min(20, Math.max(0, (S.prestige && S.prestige.stars) | 0));
+  const PM = CF.prestigeMult(stars);
   const v = (x) => x || 0;
   const all = v(R.allPct) + v(Cos.allPct) + v(CR.allPct);
   const finAmp = (1 + v(CR.finalDmgPct) / 100);
   const out = {
-    maxHp: Math.floor((140 + L.maxHp * 75 + v(R.flatHp) + U.hp) * (1 + (v(C.hpPct) + v(Cos.hpPct) + v(CR.hpPct) + v(P.hpPct) + all) / 100)),
-    atk: Math.floor((14 + L.atk * 13 + equipBonus('sword') + h.bossSword.attackBonus + v(R.flatAtk) + U.atk) * (1 + (v(C.atkPct) + v(Cos.atkPct) + v(CR.atkPct) + v(P.atkPct) + all) / 100) * finAmp),
-    def: Math.floor((5 + L.def * 13 + equipBonus('armor') + h.bossArmor.defenseBonus + v(R.flatDef) + U.def) * (1 + (v(C.defPct) + v(Cos.defPct) + v(CR.defPct) + v(P.defPct) + all) / 100)),
+    maxHp: Math.floor((140 + CF.trainSum(75, L.maxHp) + v(R.flatHp) + U.hp) * (1 + (v(C.hpPct) + v(Cos.hpPct) + v(CR.hpPct) + v(P.hpPct) + all) / 100) * PM),
+    atk: Math.floor((14 + CF.trainSum(13, L.atk) + equipBonus('sword') + h.bossSword.attackBonus + v(R.flatAtk) + U.atk) * (1 + (v(C.atkPct) + v(Cos.atkPct) + v(CR.atkPct) + v(P.atkPct) + all) / 100) * finAmp * PM),
+    def: Math.floor((5 + CF.trainSum(13, L.def) + equipBonus('armor') + h.bossArmor.defenseBonus + v(R.flatDef) + U.def) * (1 + (v(C.defPct) + v(Cos.defPct) + v(CR.defPct) + v(P.defPct) + all) / 100) * PM),
     critRate: Math.min(100, 20 + L.critRate * 1.5 + v(C.critRate) + v(Cos.critRate) + v(CR.critRate)),
     critDmg: Math.floor(150 + L.critDmg * 8 + v(C.critDmg) + v(R.critDmg) + v(Cos.critDmg) + v(CR.critDmg)),
     bossDmg: Math.floor(Math.min(1000, L.bossDmg) * 5 + v(C.bossDmg) + v(R.bossDmg) + v(Cos.bossDmg) + v(CR.bossDmg)),
     dropRate: r1(L.dropRate * 2 + v(C.dropRate) + v(R.dropRate)),
-    goldPct: Math.floor(v(C.goldPct) + v(R.goldPct) + v(Cos.goldPct) + v(CR.goldPct)),
+    goldPct: Math.floor(v(C.goldPct) + v(R.goldPct) + v(Cos.goldPct) + v(CR.goldPct)) + stars * 10,
     skillAmp: r1(v(C.skillPct) + v(R.skillPct) + v(Cos.skillPct)),
     runeMult: 1 + U.fin / 100,
     potion: Math.min(0.95, 0.40 + v(R.potionPct) / 100),
@@ -655,7 +660,7 @@ function rankUpTarget(e) {
   return e.grade === '영웅' ? '전설' : e.grade === '전설' ? '신화' : null;
 }
 function rankUpCost(e) {
-  return 0; // 무료 승급
+  return CF.rankUpCost(S.achievements.rankUps | 0, rankUpTarget(e));
 }
 function doRankUp(kind) {
   const e = S.hero[kind];
@@ -669,6 +674,7 @@ function doRankUp(kind) {
       S.achievements.goldSpent = (S.achievements.goldSpent || 0) + cost;
     }
     S.achievements.enhances = (S.achievements.enhances || 0) + 1;
+    S.achievements.rankUps = (S.achievements.rankUps || 0) + 1;
     e.grade = nextGrade;
     e.name = EQUIP[nextGrade][kind];
     e.baseStat = kind === 'sword' ? EQUIP[nextGrade].sBase : EQUIP[nextGrade].aBase;
@@ -1852,6 +1858,7 @@ function renderMenu(st) {
     mb(18, 'gold', txt('ui.menu.quests', '📜 튜토리얼 &amp; 일일 퀘스트') + (dailiesClaimable() ? '<span class="red-dot">!</span>' : ''), questsSubText(), 'openQuests()'),
     mb(19, '', txt('ui.menu.audio', '🔊 사운드 설정'), S.audio.sfx ? txt('ui.audio.onShort', '켜짐 · 볼륨 {v}%', { v: Math.round(S.audio.vol * 100) }) : txt('ui.audio.offShort', '꺼짐 (배터리 절약)'), 'openAudio()'),
     mb(20, '', txt('ui.menu.lang', '🌐 언어 / Language'), langStatusText(), 'openLang()'),
+    mb(21, 'purple', txt('ui.prestige.menu', '🌟 프레스티지 (환생)') + (canPrestige() ? '<span class="red-dot">!</span>' : ''), prestigeStatusText(), 'openPrestige()'),
     mb(0, 'red', '🚪 타이틀 화면으로 [ESC]', '게임 시작 화면으로 복귀', "switchScene('scene-title')", true),
   ].join('');
 }
@@ -1869,7 +1876,8 @@ function statsHtml() {
   const st = stats(), g = S.hero.gold;
   return `<div class="strip"><span>보유 골드: <b style="color:var(--gold)">${fmt(g)}G</b></span><span>⚡ 예상 DPS: <b style="color:var(--cyan)">${fmt(dpsOf(st))}</b></span><small style="color:var(--sub)">+1 / +5 / MAX(보유 골드 최대치)</small></div><div class="mlist">${TRAIN.map(t => {
     const lv = S.hero.statLevels[t.key], maxed = t.max && lv >= t.max, c = trainCost(t, lv), dis = maxed || g < c ? 'disabled' : '';
-    return `<div class="mrow"><div class="l"><b>${t.icon} ${t.label} <span style="color:var(--cyan)">Lv.${lv}${t.max ? '/' + t.max : ''}</span></b><span style="color:var(--green)">현재: ${trainValue(t, st)}</span><span style="color:var(--gold)">${maxed ? '최대 레벨 도달 (MAX)' : `다음 강화 비용: ${fmt(c)}G (+${t.inc}${t.unit})`}</span></div>
+    const gain = Math.round(CF.trainGain(t.inc, lv) * 10) / 10;
+    return `<div class="mrow"><div class="l"><b>${t.icon} ${t.label} <span style="color:var(--cyan)">Lv.${lv}${t.max ? '/' + t.max : ''}</span></b><span style="color:var(--green)">현재: ${trainValue(t, st)}</span><span style="color:var(--gold)">${maxed ? '최대 레벨 도달 (MAX)' : `다음 강화 비용: ${fmt(c)}G (+${gain}${t.unit})`}</span></div>
     <div class="bts"><button class="btn mini orange" ${dis} onclick="train('${t.key}',1)">+1</button><button class="btn mini gold" ${dis} onclick="train('${t.key}',5)">+5</button><button class="btn mini cyan" ${dis} onclick="train('${t.key}',9999)">MAX</button></div></div>`;
   }).join('')}</div><button class="btn full" onclick="closeModal('stats')">닫기 [ESC]</button>`;
 }
@@ -2915,6 +2923,68 @@ function raidTimeOver() {
     <div style="font-size:.82rem;color:var(--cyan)">전투 기여 참가 보상: +${fmt(compGold)}G 지급</div>
     <div style="font-size:.76rem;color:var(--sub)">장비 승급, 룬 합성, 펫 성장으로 화력을 더욱 끌어올려 보세요!</div>
   `), 800);
+}
+
+// ===== 프레스티지 (환생) =====
+const PRESTIGE_UNLOCK = 100, PRESTIGE_MAX = 20;
+function canPrestige() { return S.maxStage >= PRESTIGE_UNLOCK && (S.prestige.stars | 0) < PRESTIGE_MAX; }
+function prestigeStatusText() {
+  const stars = S.prestige.stars | 0, pct = Math.round((CF.prestigeMult(stars) - 1) * 100);
+  if (stars >= PRESTIGE_MAX) return txt('ui.prestige.maxed', '최대 별 20개 달성 (+200%)');
+  if (S.maxStage < PRESTIGE_UNLOCK) return txt('ui.prestige.locked', 'Stage {n} 도달 시 해금', { n: PRESTIGE_UNLOCK });
+  return txt('ui.prestige.menuSub', '🌟 ×{n} · 전체 +{pct}%', { n: stars, pct });
+}
+function prestigeHtml() {
+  const stars = S.prestige.stars | 0, maxed = stars >= PRESTIGE_MAX, locked = S.maxStage < PRESTIGE_UNLOCK;
+  const pct = Math.round((CF.prestigeMult(stars) - 1) * 100);
+  const nextPct = Math.round((CF.prestigeMult(Math.min(PRESTIGE_MAX, stars + 1)) - 1) * 100);
+  const action = maxed
+    ? `<button class="btn full" disabled>${txt('ui.prestige.maxed', '최대 별 20개 달성 (+200%)')}</button>`
+    : locked
+      ? `<button class="btn full" disabled>${txt('ui.prestige.locked', 'Stage {n} 도달 시 해금', { n: PRESTIGE_UNLOCK })}</button>`
+      : `<button class="btn purple full" onclick="askPrestige()">${txt('ui.prestige.action', '🌟 환생하고 +{pct}% 받기', { pct: nextPct - pct })}</button>`;
+  return `<div class="strip"><span>${txt('ui.prestige.stars', '보유 별')} <b style="color:var(--gold)">🌟 ×${stars}/${PRESTIGE_MAX}</b></span><span>${txt('ui.prestige.mult', '전체 배율')} <b style="color:var(--cyan)">×${CF.prestigeMult(stars).toFixed(2)} (+${pct}%)</b></span></div>
+  <div class="mrow"><div class="l"><b>${txt('ui.prestige.next', '다음 별: {cur} → {next}', { cur: `+${pct}%`, next: `+${nextPct}%` })}</b></div></div>
+  <div class="mrow"><div class="l"><b style="color:var(--red)">${txt('ui.prestige.resetTitle', '초기화되는 것')}</b><small style="color:var(--sub)">${txt('ui.prestige.resetList', '장비 · 스킬 · 훈련 레벨 · 룬 · 던전 층(1층)')}</small></div></div>
+  <div class="mrow"><div class="l"><b style="color:var(--green)">${txt('ui.prestige.keepTitle', '유지되는 것')}</b><small style="color:var(--sub)">${txt('ui.prestige.keepList', '프레스티지 별 · 도감 · 업적 · 코스튬 · 펫 · 골드 · 열쇠')}</small></div></div>
+  ${action}
+  <button class="btn full" onclick="closeModal('prestige')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function openPrestige() { openModal('prestige', 560, txt('ui.prestige.title', '🌟 프레스티지 (환생)'), prestigeHtml()); }
+function askPrestige() {
+  if (!canPrestige()) return;
+  const nextStar = (S.prestige.stars | 0) + 1;
+  confirmModal({
+    id: 'prestige-confirm', danger: true,
+    title: txt('ui.prestige.confirmTitle', '⚠️ 환생 확인'),
+    body: txt('ui.prestige.confirmBody', '별 {n}개를 얻고 장비·훈련·룬이 초기화됩니다.<br>던전은 1층부터 다시 시작합니다.', { n: nextStar }),
+    confirmLabel: txt('ui.prestige.action', '🌟 환생하고 +{pct}% 받기', { pct: 10 }),
+    onConfirm: () => {
+      if (!doPrestige()) return;
+      closeModal('prestige');
+      const stars = S.prestige.stars | 0;
+      infoModal(txt('ui.prestige.title', '🌟 프레스티지 (환생)'),
+        txt('ui.prestige.done', '🌟 환생 완료! 별 {n}개 · 전체 배율 +{pct}%', { n: stars, pct: Math.round((CF.prestigeMult(stars) - 1) * 100) }));
+    },
+  });
+}
+/** Resets gear/skills/training/runes and the dungeon, keeps the meta progress. */
+function doPrestige() {
+  if (!canPrestige()) return false;
+  const h = S.hero;
+  const keep = {
+    name: h.name, gold: h.gold, keys: h.keys, rainbowShards: h.rainbowShards || 0,
+    bossSword: h.bossSword, bossArmor: h.bossArmor, costumes: h.costumes, pets: h.pets,
+  };
+  S.prestige.stars = (S.prestige.stars | 0) + 1;
+  S.hero = { ...defaultState().hero, ...keep };
+  S.stage = 1; S.maxStage = 1; S.repeatStage = null;
+  if (S.autoFarm) S.autoFarm.on = false;
+  S.battle.inBattle = false; S.battle.monster = null;
+  _statsV++; // force stats() to recompute with the new multiplier before healing
+  S.hero.hp = stats().maxHp;
+  saveNow(); refreshAll();
+  return true;
 }
 
 // ===== i18n (T1): 번역 조회 + 언어 적용 =====

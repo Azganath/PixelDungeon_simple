@@ -29,12 +29,44 @@ test('heroTaken: uses hero DEF reduction', () => {
   assert.equal(CF.heroTaken(1, 1500), 1);
 });
 
-test('trainCost: known values and growth', () => {
+test('trainCost: known values, 2 %/level growth and monotonicity', () => {
   const t = { base: 100, step: 50 };
-  assert.equal(CF.trainCost(t, 0), 100);
-  assert.equal(CF.trainCost(t, 1), 168);
-  assert.equal(CF.trainCost(t, 10), 1031);
+  assert.equal(CF.trainCost(t, 0), 100, 'level 0 is untouched by the growth factor');
+  assert.equal(CF.trainCost(t, 1), 171);
+  assert.equal(CF.trainCost(t, 10), 1257);
   assert.ok(CF.trainCost(t, 101) > CF.trainCost(t, 100));
+  // the growth factor compounds: level 100 costs ~7x the old linear curve
+  const linear = (lv) => Math.floor(t.base + lv * t.step + Math.pow(lv, 1.38) * 18);
+  assert.ok(CF.trainCost(t, 100) / linear(100) > 6, 'late training is meaningfully slower');
+  assert.ok(Math.abs(CF.trainCost(t, 100) - linear(100) * Math.pow(1.02, 100)) <= 10, 'growth factor is applied to the whole curve');
+});
+
+test('trainSum: linear for the first 100 levels, diminishing afterwards', () => {
+  assert.equal(CF.trainSum(13, 0), 0);
+  assert.equal(CF.trainSum(13, 50), 650, 'existing saves keep their power');
+  assert.equal(CF.trainSum(13, 100), 1300);
+  const at200 = CF.trainSum(13, 200);
+  assert.ok(at200 > 1300 && at200 < 2600, `level 200 is worth less than double 100 (${at200})`);
+  assert.ok(CF.trainGain(13, 150) < CF.trainGain(13, 100));
+  assert.ok(CF.trainGain(13, 150) > 0);
+  assert.equal(CF.trainGain(13, 99), 13, 'still flat right before the soft cap');
+});
+
+test('prestigeMult: +10 % per star capped at 20 stars', () => {
+  assert.equal(CF.prestigeMult(0), 1);
+  assert.equal(CF.prestigeMult(1), 1.1);
+  assert.equal(CF.prestigeMult(10).toFixed(1), '2.0');
+  assert.equal(CF.prestigeMult(20), 3);
+  assert.equal(CF.prestigeMult(99), 3, 'hard cap at +200 %');
+  assert.equal(CF.prestigeMult(-5), 1, 'negative stars are clamped');
+});
+
+test('rankUpCost: first rank-up free, then 50k / 200k', () => {
+  assert.equal(CF.rankUpCost(0, '전설'), 0);
+  assert.equal(CF.rankUpCost(0, '신화'), 0);
+  assert.equal(CF.rankUpCost(1, '전설'), 50000);
+  assert.equal(CF.rankUpCost(3, '신화'), 200000);
+  assert.equal(CF.rankUpCost(3, '일반'), 0);
 });
 
 test('engraveCost: 1.65x per level', () => {
