@@ -153,8 +153,139 @@ test('1.6/1.7 — export/import roundtrip and corrupt input safety', () => {
 
 test('1.7 — save/load keeps current HP', () => {
   const g = boot();
-  g.run('load(); S.hero.hp = 77; save(); S.hero.hp = 1; load();');
+  g.run('load(); S.hero.hp = 77; saveNow(); S.hero.hp = 1; load();');
   assert.equal(g.run('S.hero.hp'), 77);
+});
+
+test('2.1 — offline progress farms the current stage and caps at 8h', () => {
+  const g = boot();
+  g.run('load(); S.stage = 2; S.maxStage = 2; S.hero.gold = 0; S.hero.keys = 0;');
+  // first boot: nothing to award
+  assert.equal(g.run('runOfflineProgress()'), null);
+
+  g.run('S.lastSeen = Date.now() - 3600 * 1000; REPORT = runOfflineProgress();');
+  const rep = g.run('REPORT');
+  assert.ok(rep.battles > 100, `expected many battles, got ${rep.battles}`);
+  assert.ok(rep.gold > 0, 'offline farming should grant gold');
+  assert.ok(g.run('S.hero.gold') > 0);
+  assert.equal(rep.capped, false);
+
+  g.run('S.lastSeen = Date.now() - 48 * 3600 * 1000; BIG = runOfflineProgress();');
+  assert.equal(g.run('BIG.capped'), true);
+  assert.ok(g.run('BIG.battles') <= 1600);
+
+  // clock going backwards must not award anything
+  g.run('const before = S.hero.gold; S.lastSeen = Date.now() + 60000; runOfflineProgress(); BACK = S.hero.gold - before;');
+  assert.equal(g.run('BACK'), 0);
+});
+
+test('2.2 — auto-farm counts battles and stops on conditions', () => {
+  const g = boot();
+  g.run(`load();
+    S.autoFarm = { on: true, done: 0, stopHpPct: 30, stopGold: 0, stopKeys: 0, maxBattles: 2 };
+    S.hero.hp = stats().maxHp;
+    maybeAutoFarm();`);
+  assert.equal(g.run('S.autoFarm.done'), 1, 'battle counter increments while farming');
+  assert.equal(g.run('S.autoFarm.on'), true);
+
+  g.run('S.hero.hp = Math.floor(stats().maxHp * 0.1); maybeAutoFarm();');
+  assert.equal(g.run('S.autoFarm.on'), false, 'low HP stops the farm');
+
+  g.run(`S.autoFarm = { on: true, done: 0, stopHpPct: 0, stopGold: 100, stopKeys: 0, maxBattles: 0 };
+    S.hero.gold = 150; maybeAutoFarm();`);
+  assert.equal(g.run('S.autoFarm.on'), false, 'gold target stops the farm');
+
+  g.run(`S.autoFarm = { on: true, done: 0, stopHpPct: 0, stopGold: 0, stopKeys: 0, maxBattles: 1 };
+    S.hero.gold = 0; maybeAutoFarm();`);
+  assert.equal(g.run('S.autoFarm.done'), 1);
+  g.run('maybeAutoFarm();');
+  assert.equal(g.run('S.autoFarm.on'), false, 'battle limit stops the farm');
+});
+
+test('2.3 — tutorial rewards, daily progress and single claim', () => {
+  const g = boot();
+  g.run(`load(); S.hero.keys = 0; S.hero.gold = 0; openOne('sword');`);
+  assert.ok(g.run('S.hero.keys') >= 3, 'tutorial chest step pays keys');
+  assert.equal(g.run("S.quests.tutorial.done.includes('chest')"), true);
+  assert.equal(g.run('dailyList().length'), 3, 'three dailies per day');
+
+  g.run(`dailyList().forEach(d => { S.quests.daily.progress[d.id] = d.target; }); BEFORE = S.hero.keys; claimDailies();`);
+  assert.ok(g.run('S.hero.keys') > g.run('BEFORE'), 'claim pays the dailies + streak bonus');
+  assert.equal(g.run('S.quests.daily.claimed'), true);
+  const keys = g.run('S.hero.keys');
+  g.run('claimDailies();');
+  assert.equal(g.run('S.hero.keys'), keys, 'cannot claim twice in a day');
+});
+
+test('2.3 — a new day resets dailies and advances or resets the streak', () => {
+  const g = boot();
+  g.run(`load();
+    S.quests.daily.date = '2000-01-01'; S.quests.daily.progress = { forge: 3 }; S.quests.daily.claimed = true;
+    S.quests.streak = { count: 2, last: '2000-01-01' };
+    sanitize();`);
+  assert.equal(g.run('S.quests.daily.date'), CF.dailyDateKey(new Date()));
+  assert.equal(g.run('Object.keys(S.quests.daily.progress).length'), 0);
+  assert.equal(g.run('S.quests.daily.claimed'), false);
+  assert.equal(g.run('S.quests.streak.count'), 1, 'a missed day resets the streak');
+
+  const yesterday = CF.dailyDateKey(new Date(Date.now() - 86400000));
+  g.run(`S.quests.daily.date = '2000-01-01'; S.quests.streak = { count: 2, last: '${yesterday}' }; sanitize();`);
+  assert.equal(g.run('S.quests.streak.count'), 3, 'consecutive login advances the streak');
+});
+
+test('2.4 — sound is optional, throttled and persisted', () => {
+  const g = boot();
+  g.run('load()');
+  assert.equal(g.run("sfx('win')"), false, 'no AudioContext -> silent, no crash');
+  assert.equal(g.run('S.audio.sfx'), true, 'sound on by default');
+  assert.equal(g.run("audioCtx()"), null, 'missing WebAudio degrades to null');
+
+  g.run('toggleSfx();');
+  assert.equal(g.run('S.audio.sfx'), false);
+  g.run('toggleSfx();');
+  assert.equal(g.run('S.audio.sfx'), true);
+
+  g.run('setSfxVolume(3); CLAMP_HI = S.audio.vol; setSfxVolume(-1); CLAMP_LO = S.audio.vol;');
+  assert.equal(g.run('CLAMP_HI'), 1);
+  assert.equal(g.run('CLAMP_LO'), 0);
+
+  // the volume survives a reload through the save file
+  g.run('setSfxVolume(0.25); saveNow(); load();');
+  assert.equal(g.run('S.audio.vol'), 0.25);
+});
+
+test('sprint 2 UI — every modal renders cleanly and its handlers exist', () => {
+  const g = boot();
+  g.run('load()');
+  for (const expr of ['afHtml()', 'questsHtml()', 'audioHtml()']) {
+    const html = g.run(expr);
+    assert.ok(html && html.length > 80, `${expr} renders`);
+    assert.ok(!/undefined|NaN/.test(html), `${expr} has no undefined/NaN`);
+    const handlers = [...html.matchAll(/on(?:click|input|change)="([A-Za-z0-9_]+)\(/g)].map(m => m[1]);
+    assert.ok(handlers.length > 0, `${expr} wires handlers`);
+    for (const fn of new Set(handlers)) {
+      assert.equal(g.run(`typeof ${fn}`), 'function', `${expr}: handler ${fn}() is missing`);
+    }
+  }
+});
+
+test('2.5 — stats() is memoised and invalidated on change', () => {
+  const g = boot();
+  g.run('load()');
+  const atk1 = g.run('stats().atk');
+  assert.equal(g.run('stats() === stats()'), true, 'repeated calls hit the cache');
+  g.run('S.hero.statLevels.atk += 5; saveNow();');
+  assert.ok(g.run('stats().atk') > atk1, 'stats() recomputes after a saved change');
+  const before = g.run('stats().atk');
+  g.run('S.hero.gold = 1e9; buyTrain("atk", 1)');
+  assert.ok(g.run('stats().atk') > before, 'withHpDelta invalidates the cache');
+});
+
+test('2.5 — save() coalesces writes but saveNow() writes immediately', () => {
+  const g = boot();
+  g.run('load()');
+  g.run('S.hero.gold = 4242; saveNow();');
+  assert.ok(g.store['PIXEL_DUNGEON_VIBE_SAVE_V7'].includes('4242'));
 });
 
 test('1.5 — no native alert()/confirm() left in game.js', () => {
