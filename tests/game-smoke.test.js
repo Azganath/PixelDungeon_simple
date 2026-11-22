@@ -519,12 +519,12 @@ test('3.4a — equip and sell from the inventory keep the forge progress', () =>
 
   // favourites cannot be sold; regular pieces can
   g.run(`S.inventory.swords[0].fav = true; PROTECTED = sellInventoryItem('sword', S.inventory.swords[0].id);`);
-  assert.equal(g.run('PROTECTED'), 0);
+  assert.equal(g.run('PROTECTED.ok'), false, 'favourites are never sold');
   assert.equal(g.run('invCount("sword")'), 1);
   g.run(`S.inventory.swords[0].fav = false; S.hero.gold = 0; SOLD = sellInventoryItem('sword', S.inventory.swords[0].id);`);
-  assert.ok(g.run('SOLD') > 0);
+  assert.ok(g.run('SOLD.gold') > 0, 'the sale pays 60% of the drop value');
   assert.equal(g.run('invCount("sword")'), 0);
-  assert.equal(g.run('S.hero.gold'), g.run('SOLD'));
+  assert.equal(g.run('S.hero.gold'), g.run('SOLD.gold'));
 });
 
 test('3.4a — old saves migrate to an empty inventory and junk entries are dropped', () => {
@@ -542,10 +542,84 @@ test('3.4a — old saves migrate to an empty inventory and junk entries are drop
   assert.equal(g.run("S.inventory.swords.every(e => !!e.id)"), true, 'every entry gets an id');
 });
 
+test('3.4b — the inventory modal lists the bag with deltas and wires every handler', () => {
+  const g = boot();
+  g.run(`load();
+    S.inventory = { swords: [], armors: [] };
+    S.hero.sword = newEquip('sword','영웅');
+    addToInventory('sword', newEquip('sword','전설'));
+    addToInventory('sword', newEquip('sword','일반'));
+    addToInventory('armor', newEquip('armor','희귀'));
+    openInventory('sword');`);
+  const html = g.run('inventoryHtml()');
+  assert.ok(html.length > 300, 'the modal renders');
+  assert.ok(!/undefined|NaN/.test(html), 'no undefined/NaN in the markup');
+  assert.match(html, /2\/20/, 'the sword counter shows 2/20');
+  assert.match(html, /ATK \+/, 'each row shows its flat stat');
+  const handlers = [...html.matchAll(/onclick="([A-Za-z0-9_]+)\(/g)].map(m => m[1]);
+  assert.ok(handlers.includes('invEquip') && handlers.includes('invSell') && handlers.includes('invFav'));
+  for (const fn of new Set(handlers)) assert.equal(g.run(`typeof ${fn}`), 'function', `handler ${fn}() is missing`);
+
+  // the armor tab renders that bag instead
+  g.run("invTab('armor')");
+  const armorHtml = g.run('inventoryHtml()');
+  assert.match(armorHtml, /1\/20/);
+  assert.match(armorHtml, /DEF \+/);
+  g.run("invTab('sword')");
+});
+
+test('3.4b — favourites block selling, key-grade gear pays keys, equipping keeps the bag in sync', () => {
+  const g = boot();
+  g.run(`load();
+    S.inventory = { swords: [], armors: [] };
+    S.hero.gold = 0; S.hero.keys = 0;
+    S.hero.sword = newEquip('sword','일반');
+    addToInventory('sword', newEquip('sword','전설'));
+    addToInventory('sword', newEquip('sword','영웅'));
+    LEG = S.inventory.swords.find(e => e.grade === '전설').id;
+    HERO = S.inventory.swords.find(e => e.grade === '영웅').id;
+    invFav('sword', LEG);
+    FAV = S.inventory.swords.find(e => e.id === LEG).fav;
+    invSell('sword', LEG);
+    AFTER_FAV_SELL = invCount('sword');`);
+  assert.equal(g.run('FAV'), true, '★ toggles the favourite flag');
+  assert.equal(g.run('AFTER_FAV_SELL'), 2, 'a favourite cannot be sold');
+
+  g.run(`invFav('sword', LEG);
+    invSell('sword', LEG);
+    CK = Object.keys(UI.cbs).filter(k => !k.endsWith('c')).pop();
+    runConfirm(CK);`);
+  assert.equal(g.run("invCount('sword')"), 1, 'the legendary is gone after confirming');
+  assert.equal(g.run('S.hero.keys'), 2, 'key-grade gear pays keys (60% of 3 → 2)');
+  assert.equal(g.run('S.hero.gold'), 0, 'no gold for a key-grade sale');
+
+  // equipping from the bag moves the old piece back and follows with the forge progress
+  g.run(`invEquip('sword', HERO);`);
+  assert.equal(g.run('S.hero.sword.grade'), '영웅', 'the stored piece is equipped');
+  assert.equal(g.run("invCount('sword')"), 1, 'the previous sword is stored again');
+  assert.equal(g.run("S.inventory.swords[0].grade"), '일반');
+});
+
+test('3.4b — a matching sword/armor grade activates the set bonus in stats()', () => {
+  const g = boot();
+  g.run(`load();
+    S.hero.sword = newEquip('sword','전설'); S.hero.armor = newEquip('armor','일반'); bumpStats();
+    MIXED = stats();
+    S.hero.armor = newEquip('armor','전설'); bumpStats();
+    PAIRED = stats();
+    S.hero.sword = newEquip('sword','신화'); S.hero.armor = newEquip('armor','신화'); bumpStats();
+    MYTH = stats();`);
+  assert.equal(g.run('MIXED.setPct'), 0, 'mixed grades give no set bonus');
+  assert.equal(g.run('PAIRED.setPct'), 5);
+  assert.equal(g.run('MYTH.setPct'), 12, 'a full mythic pair gives 12%');
+  assert.ok(g.run('PAIRED.atk') > g.run('MIXED.atk'), 'the set bonus lifts ATK');
+  assert.ok(g.run('PAIRED.maxHp') > g.run('MIXED.maxHp'), 'and max HP');
+});
+
 test('sprint 2 UI — every modal renders cleanly and its handlers exist', () => {
   const g = boot();
   g.run('load()');
-  for (const expr of ['afHtml()', 'questsHtml()', 'audioHtml()', 'prestigeHtml()', 'loadoutHtml()']) {
+  for (const expr of ['afHtml()', 'questsHtml()', 'audioHtml()', 'prestigeHtml()', 'loadoutHtml()', 'inventoryHtml()']) {
     const html = g.run(expr);
     assert.ok(html && html.length > 80, `${expr} renders`);
     assert.ok(!/undefined|NaN/.test(html), `${expr} has no undefined/NaN`);

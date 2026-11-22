@@ -106,6 +106,35 @@
     return Math.floor((e.baseStat + totalSteps(e) * step) * mult);
   }
 
+  /**
+   * Set bonus for a matching sword + armor pair (3.4b).
+   * Two pieces of the same grade form a set: +5% ATK/DEF/HP, or +12% when the
+   * pair is mythic ("full set"). `GEAR_SETS` keeps the ids stable for the UI.
+   */
+  // Only named grades (영웅+) belong to a set, so the bonus is a progression
+  // reward instead of a free buff on the starting iron gear.
+  const GEAR_SETS = {
+    '영웅': { id: 'lumen', icon: '✨', pct: 5 },
+    '전설': { id: 'dragon', icon: '🐉', pct: 5 },
+    '신화': { id: 'aegis', icon: '🌈', pct: 12 },
+  };
+  function setBonus(g1, g2) {
+    const a = GEAR_SETS[g1], b = GEAR_SETS[g2];
+    if (!a || !b || g1 !== g2) return { pct: 0, id: null, icon: '' };
+    return { pct: a.pct, id: a.id, icon: a.icon };
+  }
+
+  /**
+   * Reward for manually selling one stored piece: 60% of the drop value, so the
+   * bag cannot be farmed for gold. Key-grade gear pays keys (min. 1).
+   */
+  function sellValue(reward) {
+    const r = reward || {};
+    const gold = Math.floor((r.gold || 0) * 0.6);
+    const keys = r.keys ? Math.max(1, Math.round(r.keys * 0.6)) : 0;
+    return { gold, keys };
+  }
+
   /** Cost and success chance of the next enhancement attempt. */
   function enhanceInfo(e, q) {
     const steps = totalSteps(e);
@@ -328,6 +357,6 @@
 
   return {
     r1, dmgReduction, monsterTaken, heroTaken, trainCost, trainSum, trainGain, prestigeMult, rankUpCost, engraveCost, totalSteps,
-    isMaxed, equipStat, enhanceInfo, rollGrade, estimateDps, mergeSave, forgeGoalReached, offlineProgress, farmStopReason, STATUS_DEFS, rollStatus, addStatus, statusTick, patternStep, autoCastAllowed, DAILY_POOL, dailyDateKey, pickDailyQuests, streakNext,
+    isMaxed, equipStat, GEAR_SETS, setBonus, sellValue, enhanceInfo, rollGrade, estimateDps, mergeSave, forgeGoalReached, offlineProgress, farmStopReason, STATUS_DEFS, rollStatus, addStatus, statusTick, patternStep, autoCastAllowed, DAILY_POOL, dailyDateKey, pickDailyQuests, streakNext,
   };
 });
