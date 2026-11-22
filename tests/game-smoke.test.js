@@ -277,10 +277,105 @@ test('T1 — the real dictionaries translate in-game and the choice persists', (
   assert.equal(g.run('document.documentElement.lang'), 'ko', 'html lang follows the setting');
 });
 
+test('3.1 — prestige unlocks at Stage 100, resets the run and keeps meta progress', () => {
+  const g = boot();
+  g.run(`load();
+    S.maxStage = 99; LOCKED = canPrestige();
+    S.maxStage = 100; OPEN = canPrestige();
+    S.hero.statLevels.atk = 40; S.hero.gold = 12345; S.hero.keys = 77;
+    S.hero.skills.push({ ...S.hero.skills[0], name: '테스트 스킬' });
+    S.codex.swords['테스트검'] = 3;
+    S.chestLevel = 4;
+    OK = doPrestige();`);
+  assert.equal(g.run('LOCKED'), false, 'Stage 99 is not enough');
+  assert.equal(g.run('OPEN'), true);
+  assert.equal(g.run('OK'), true);
+  assert.equal(g.run('S.prestige.stars'), 1);
+  assert.equal(g.run('S.stage'), 1, 'dungeon restarts at floor 1');
+  assert.equal(g.run('S.maxStage'), 1);
+  assert.equal(g.run('S.hero.statLevels.atk'), 0, 'training reset');
+  assert.equal(g.run('S.hero.skills.length'), 1, 'skills reset to the starter one');
+  assert.equal(g.run('S.hero.sword.grade'), '일반', 'gear reset');
+  assert.equal(g.run('S.hero.gold'), 12345, 'gold kept');
+  assert.equal(g.run('S.hero.keys'), 77, 'keys kept');
+  assert.equal(g.run('S.chestLevel'), 4, 'chest level kept');
+  assert.equal(g.run("'테스트검' in S.codex.swords"), true, 'codex kept');
+  assert.equal(g.run('S.hero.hp'), g.run('stats().maxHp'), 'healed to the new max');
+  assert.equal(g.run('canPrestige()'), false, 'needs a new climb to Stage 100 again');
+
+  // +10 % global: attack is the base value times the prestige multiplier
+  const expectedAtk = g.run('Math.floor((14 + equipBonus("sword") + S.hero.bossSword.attackBonus) * 1.1)');
+  assert.equal(g.run('stats().atk'), expectedAtk, 'one star = +10 % attack');
+  assert.equal(g.run('stats().goldPct'), 10, '+10 % gold per star');
+  // the multiplier survives a reload
+  g.run('saveNow(); load();');
+  assert.equal(g.run('S.prestige.stars'), 1);
+  assert.equal(g.run('stats().atk'), expectedAtk);
+});
+
+test('3.1 — prestige is capped at 20 stars', () => {
+  const g = boot();
+  g.run('load(); S.maxStage = 100; S.prestige.stars = 20; MAXED = canPrestige(); TRIED = doPrestige();');
+  assert.equal(g.run('MAXED'), false);
+  assert.equal(g.run('TRIED'), false);
+  assert.equal(g.run('S.prestige.stars'), 20);
+  assert.equal(g.run('CF.prestigeMult(20)'), 3);
+});
+
+test('3.5 — rank-up is free once and then costs gold', () => {
+  const g = boot();
+  g.run(`load();
+    S.hero.sword = { ...newEquip('sword', '영웅'), starTier: 3, starCount: 5 };
+    FIRST = rankUpCost(S.hero.sword);
+    S.hero.gold = 1e9;
+    doRankUp('sword');
+    GRADE = S.hero.sword.grade; NEXT = rankUpCost(S.hero.sword);`);
+  assert.equal(g.run('FIRST'), 0, 'the first rank-up is free');
+  assert.equal(g.run('GRADE'), '전설');
+  assert.equal(g.run('NEXT'), 200000, '전설→신화 is the 200k tier');
+
+  g.run(`S.hero.sword = { ...newEquip('sword', '전설'), starTier: 3, starCount: 5 };
+    S.hero.gold = 10; doRankUp('sword');`);
+  assert.equal(g.run('S.hero.sword.grade'), '전설', 'blocked without gold');
+  assert.equal(g.run('S.hero.gold'), 10);
+
+  g.run(`S.hero.gold = 1e9; doRankUp('sword');`);
+  assert.equal(g.run('S.hero.sword.grade'), '신화');
+  assert.ok(g.run('S.hero.gold') <= 1e9 - 200000, 'the mythical rank-up costs 200k');
+});
+
+test('3.5 — training gains and costs follow the new curves in-game', () => {
+  const g = boot();
+  g.run('load(); S.hero.gold = 1e12;');
+  const cost0 = g.run('trainCost(TRAIN[0], 0)');
+  g.run('train("atk", 100);');
+  const cost100 = g.run('trainCost(TRAIN[0], 100)');
+  assert.ok(cost100 > cost0 * 10, `level 100 must be much more expensive (${cost0} -> ${cost100})`);
+  assert.equal(g.run('S.hero.statLevels.atk'), 100);
+  assert.equal(g.run('stats().atk'), g.run('Math.floor(14 + 100 * 13 + equipBonus("sword") + S.hero.bossSword.attackBonus)'), 'first 100 levels stay linear');
+  // levels past the soft cap are worth less
+  g.run('train("atk", 100);');
+  assert.equal(g.run('S.hero.statLevels.atk'), 200);
+  const atk200 = g.run('stats().atk');
+  const linear200 = g.run('Math.floor(14 + 200 * 13 + equipBonus("sword") + S.hero.bossSword.attackBonus)');
+  assert.ok(atk200 < linear200, 'soft cap: level 200 is worth less than 200 linear levels');
+});
+
+test('3.5 — the baseline build wins floor 1 and loses floor 200 (balance guard)', () => {
+  const g = boot();
+  g.run('load()');
+  const starterWins = (() => { let w = 0; for (let i = 0; i < 20; i++) if (g.run('simOneBattle(1).win')) w++; return w; })();
+  assert.equal(starterWins, 20, 'floor 1 is always winnable with the starter hero');
+  g.run('S.hero.statLevels.atk = 2; S.hero.statLevels.def = 2; S.hero.statLevels.maxHp = 2; bumpStats();');
+  let lateWins = 0;
+  for (let i = 0; i < 5; i++) if (g.run('simOneBattle(200).win')) lateWins++;
+  assert.equal(lateWins, 0, 'a starter build cannot clear floor 200');
+});
+
 test('sprint 2 UI — every modal renders cleanly and its handlers exist', () => {
   const g = boot();
   g.run('load()');
-  for (const expr of ['afHtml()', 'questsHtml()', 'audioHtml()']) {
+  for (const expr of ['afHtml()', 'questsHtml()', 'audioHtml()', 'prestigeHtml()']) {
     const html = g.run(expr);
     assert.ok(html && html.length > 80, `${expr} renders`);
     assert.ok(!/undefined|NaN/.test(html), `${expr} has no undefined/NaN`);

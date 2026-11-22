@@ -47,6 +47,8 @@
 * **자동 파밍 (v1.2):** 마을의 `🔁 자동 파밍`에서 HP·골드·열쇠·전투 횟수 조건을 정하면 결과창이 자동으로 넘어가며 계속 사냥합니다.
 * **튜토리얼 & 일일 퀘스트 (v1.2):** 5단계 튜토리얼 보상 + 매일 00:00에 새로 열리는 3개의 일일 퀘스트, 연속 접속 보너스(최대 7일).
 * **사운드 & 언어 (v1.2):** 웹오디오로 합성한 칩튠 효과음(볼륨/음소거 저장)과 `🌐 언어` 선택 (한국어 / English / Español).
+* **프레스티지 / 환생 (v1.3):** Stage 100 도달 후 환생하면 별 1개(+10% 전체 배율, 최대 20개 ×3)를 얻고 장비·훈련·룬이 초기화됩니다. 도감·업적·펫·골드·열쇠는 유지됩니다.
+* **밸런스 (v1.3):** 훈련 비용이 레벨당 2%씩 증가하고, Lv.100 이후 훈련 효과는 점감합니다. 승급은 첫 1회 무료, 이후 5만 G / 20만 G. 곡선은 `docs/BALANCE.md` 에 시뮬레이션 결과로 기록됩니다.
 
 ---
 
@@ -77,4 +79,5 @@ PixelDungeon_simple is a static, dependency-free 16-bit idle RPG. There is no bu
 * i18n: `npm run i18n` re-extracts every Korean string (`src/i18n/ko.auto.json`) and rebuilds `src/i18n/strings.js` from the curated `ko/en/es` dictionaries. The runtime (`src/i18n/index.js`) exposes `t()`, `setLang()` and a Korean fallback, so missing translations never break the layout.
 * CI (`.github/workflows/ci.yml`) runs both on every push and pull request.
 * **New in v1.1:** save export/import (code or `.json`), HP persists between battles (30% heal on victory), DPS meter in the menu/character/forge screens, stoppable auto-forge with a `+10`/`MAX` goal, and in-game modals instead of native `alert()`/`confirm()` dialogs.
+* **New in v1.3:** prestige/rebirth (Stage 100 → +10 % per star, up to ×3, resets gear/training/runes but keeps codex, achievements, pets, gold and keys) and rebalanced curves (training costs +2 %/level, soft cap after Lv.100, rank-ups free once then 50k/200k) documented in `docs/BALANCE.md` and guarded by `npm run balance:check`.
 * **New in v1.2:** offline earnings (up to 8 h, 5 min grace, 50% efficiency) with a report modal, auto-farm with HP/gold/keys/battle stop rules, a 5-step tutorial plus 3 rotating daily quests with a login streak, WebAudio chiptune SFX (no asset files), coalesced saves + memoised `stats()`, and a KO/EN/ES language picker built on the new i18n layer.

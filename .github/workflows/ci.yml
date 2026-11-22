@@ -18,3 +18,5 @@ jobs:
         run: npm run check
       - name: Unit tests
         run: npm test
+      - name: Balance guard (floors 1-50 must stay winnable)
+        run: npm run balance:check
