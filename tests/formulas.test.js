@@ -134,3 +134,55 @@ test('forgeGoalReached: +10 target vs max target', () => {
   assert.equal(CF.forgeGoalReached({ grade: '일반', starTier: 1, starCount: 1 }, 'max'), false);
   assert.equal(CF.forgeGoalReached({ grade: '신화', starTier: 5 }, 'max'), true);
 });
+
+test('offlineProgress: grace period, efficiency, 8h cap and clock changes', () => {
+  const h = 3600 * 1000;
+  assert.deepEqual(CF.offlineProgress({ lastSeen: 1000, now: 1000 + 3 * 60 * 1000 }),
+    { awayMs: 3 * 60 * 1000, capped: false, battles: 0, effectiveMs: 0 });
+  assert.equal(CF.offlineProgress({ lastSeen: 1000, now: 1000 + h }).battles, 200);
+  const day = CF.offlineProgress({ lastSeen: 1000, now: 1000 + 24 * h });
+  assert.equal(day.capped, true);
+  assert.equal(day.effectiveMs, 8 * h);
+  assert.equal(day.battles, 1600);
+  // clock going backwards / first launch must never award progress
+  assert.equal(CF.offlineProgress({ lastSeen: 5000, now: 1000 }).battles, 0);
+  assert.equal(CF.offlineProgress({ lastSeen: 0, now: 999999 }).battles, 0);
+  // efficiency and battle length are configurable
+  assert.equal(CF.offlineProgress({ lastSeen: 1, now: 1 + h, efficiency: 1, avgBattleMs: 60000 }).battles, 60);
+});
+
+test('farmStopReason: every condition and the disabled cases', () => {
+  const base = { on: true, done: 0, maxBattles: 0, stopGold: 0, stopKeys: 0, stopHpPct: 0, hp: 100, maxHp: 100, gold: 0, keys: 0 };
+  assert.equal(CF.farmStopReason(base), null, 'nothing configured -> keep farming');
+  assert.equal(CF.farmStopReason({ ...base, on: false }), null, 'off -> no stop');
+  assert.equal(CF.farmStopReason({ ...base, maxBattles: 5, done: 5 }), 'battles');
+  assert.equal(CF.farmStopReason({ ...base, maxBattles: 5, done: 4 }), null);
+  assert.equal(CF.farmStopReason({ ...base, stopGold: 1000, gold: 1000 }), 'gold');
+  assert.equal(CF.farmStopReason({ ...base, stopGold: 1000, gold: 999 }), null);
+  assert.equal(CF.farmStopReason({ ...base, stopKeys: 3, keys: 3 }), 'keys');
+  assert.equal(CF.farmStopReason({ ...base, stopHpPct: 30, hp: 29, maxHp: 100 }), 'hp');
+  assert.equal(CF.farmStopReason({ ...base, stopHpPct: 30, hp: 30, maxHp: 100 }), null);
+});
+
+test('daily quests: deterministic rotation, stable per day, 3 unique quests', () => {
+  const ids = (d) => CF.pickDailyQuests(d).map((q) => q.id);
+  assert.deepEqual(ids('2026-11-22'), ids('2026-11-22'));
+  assert.notDeepEqual(ids('2026-11-22'), ids('2026-11-23'));
+  for (const d of ['2026-01-01', '2026-06-15', '2026-12-31', '2027-02-28']) {
+    const list = ids(d);
+    assert.equal(list.length, 3);
+    assert.equal(new Set(list).size, 3, `duplicate dailies on ${d}`);
+  }
+  assert.match(CF.dailyDateKey(new Date(2026, 0, 5)), /^2026-01-05$/);
+});
+
+test('streakNext: same day, consecutive day, gap and weekly cap', () => {
+  assert.deepEqual(CF.streakNext({ count: 3, last: '2026-11-22' }, '2026-11-22'),
+    { count: 3, last: '2026-11-22', changed: false });
+  assert.deepEqual(CF.streakNext({ count: 3, last: '2026-11-22' }, '2026-11-23'),
+    { count: 4, last: '2026-11-23', changed: true });
+  assert.deepEqual(CF.streakNext({ count: 3, last: '2026-11-20' }, '2026-11-23'),
+    { count: 1, last: '2026-11-23', changed: true }, 'a missed day resets the streak');
+  assert.equal(CF.streakNext({ count: 7, last: '2026-11-22' }, '2026-11-23').count, 7, 'capped at 7');
+  assert.equal(CF.streakNext({ count: 0, last: '' }, '2026-11-23').count, 1, 'first login');
+});

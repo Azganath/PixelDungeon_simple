@@ -58,7 +58,7 @@
 
 ## Estado de ejecución / Execution status
 
-**Última actualización / Last update:** 2026-11-22 · rama / branch `arena/6a512daa-pixeldungeon-simple`
+**Última actualización / Last update:** 2026-11-22 · rama / branch `arena/1ad2ad83-pixeldungeon-simple`
 
 | Tarea / Task | Estado / Status | Evidencia / Evidence |
 |---|---|---|
@@ -71,7 +71,17 @@
 | **1.6** Aviso de guardado fallido (A3.7) | ✅ Hecho / Done | `save()` muestra toast `⚠️ 세이브를 저장하지 못했습니다` (una vez por sesión) |
 | **1.7** Exportar / Importar save (A4.1) | ✅ Hecho / Done | `exportSave()` (código Base64 + `.json`), `importSaveDialog()` con validación `sanitize()` y backup automático |
 
-**Pendiente / Pending:** Sprint 2 (2.1 offline, 2.2 auto-farm, 2.3 tutorial/diarias, 2.4 audio, 2.5 caché de `stats()`) y fases i18n T0/T1.
+| **2.1** Progreso offline (B1) | ✅ Hecho / Done | `CF.offlineProgress()` puro (gracia 5 min, tope 8 h, 50 % de eficiencia) + `runOfflineProgress()` con simulación por muestreo y reporte `🌙 오프라인 수익 보고서` |
+| **2.2** Auto-farm (A2.2) | ✅ Hecho / Done | `CF.farmStopReason()` + modal `🔁 자동 파밍`: contador, condiciones de parada por HP %, oro, llaves y nº de batallas; auto-avanza el resultado y se apaga al perder o volver al pueblo |
+| **2.3** Tutorial + 3 diarias (D1/A1.6) | ✅ Hecho / Done | 5 pasos de tutorial con recompensa, 3 misiones diarias rotativas (`CF.pickDailyQuests`, reinicio a las 00:00), racha de conexión (`CF.streakNext`, tope 7 días) y botón de reclamo único |
+| **2.4** Audio chiptune (B15/A2.7) | ✅ Hecho / Done | `sfx()` sintetiza 8 efectos con WebAudio (sin archivos), volumen persistido, throttling por nombre y silencio durante la simulación offline |
+| **2.5** Rendimiento (`stats()`/`save()`) | ✅ Hecho / Done | `save()` coalescido (400 ms) con `flushSave()` en `pagehide`, `stats()` memoizado con `bumpStats()` |
+| **T0** Extracción i18n | ✅ Hecho / Done | `tools/extract-i18n.js` → `src/i18n/ko.auto.json` (**911 cadenas únicas**, 24 466 caracteres) |
+| **T1** Infraestructura i18n | ✅ Hecho / Done | `src/i18n/index.js` (`t()`, `setLang()`, fallback a `ko`, log de claves faltantes), `src/i18n/{ko,en,es}.json` (**86 claves curadas, 100 % traducidas en/en+es**), `S.lang` en el save + selector `🌐 언어 / Language` |
+
+**Pendiente / Pending:** fases i18n **T2** (UI del menú/forja), **T3** (sistemas: batalla, misiones) y Sprint 3 (jefes/estados, inventario, NPC).
+
+**Lecciones / Lessons:** la suite pasó de 26 a **45 tests**; los cambios de UI se validan sin navegador con el arnés `vm` + DOM falso (`undefined`/`NaN` y handlers `onclick` inexistentes se detectan en CI).
 
 > Cada tarea se puede verificar con `npm test`; los cambios de UI se revisan en el preview local (`npm run serve`).
 
@@ -810,7 +820,9 @@ A task is **done** when: (1) code + green tests, (2) acceptance criterion verifi
 | `pixelfx.js` | Efectos de escudo/curación (3.3); sin cambios de API |
 | `mods/mods.js` | Carga dinámica sin `document.write` (5.3) |
 | `src/core/formulas.js` *(nuevo)* | Funciones puras extraídas para tests (1.0) |
-| `src/i18n/{ko,en,es}.json` *(nuevo)* | Diccionarios (~900 claves) (T0–T4) |
+| `src/i18n/{ko,en,es}.json` *(hecho T1)* | Diccionarios curados: 86 claves al 100 % en ko/en/es |
+| `src/i18n/ko.auto.json` *(hecho T0)* | Inventario generado: 911 cadenas coreanas con clave estable `<ámbito>.<hash8>` |
+| `src/i18n/strings.js` *(generado)* | Bundle `window.I18N_DATA` para que funcione también desde `file://` |
 | `src/i18n/index.js` *(nuevo)* | `t()`, `setLang()`, fallback (T1) |
 | `src/audio.js` *(nuevo)* | SFX + música WebAudio (2.4) |
 | `src/data/quests.js`, `npcs.js` *(nuevo)* | Tutorial/diarias (2.3), NPCs (4.3) |
@@ -828,7 +840,9 @@ A task is **done** when: (1) code + green tests, (2) acceptance criterion verifi
 | `pixelfx.js` | Shield/heal effects (3.3); no API changes |
 | `mods/mods.js` | Dynamic loading without `document.write` (5.3) |
 | `src/core/formulas.js` *(new)* | Pure functions extracted for tests (1.0) |
-| `src/i18n/{ko,en,es}.json` *(new)* | Dictionaries (~900 keys) (T0–T4) |
+| `src/i18n/{ko,en,es}.json` *(T1 done)* | Curated dictionaries: 86 keys, 100 % in ko/en/es |
+| `src/i18n/ko.auto.json` *(T0 done)* | Generated inventory: 911 Korean strings keyed `<scope>.<hash8>` |
+| `src/i18n/strings.js` *(generated)* | `window.I18N_DATA` bundle so the game also runs from `file://` |
 | `src/i18n/index.js` *(new)* | `t()`, `setLang()`, fallback (T1) |
 | `src/audio.js` *(new)* | WebAudio SFX + music (2.4) |
 | `src/data/quests.js`, `npcs.js` *(new)* | Tutorial/dailies (2.3), NPCs (4.3) |

@@ -252,14 +252,23 @@ function defaultState() {
     codexRewards: {},
     achievements: { kills: 0, enhances: 0, goldSpent: 0, raids: 0, claimed: {} },
     relics: {},
-    stage: 1, maxStage: 1, repeatStage: null, world: 'normal', battleSpeed: 1, forgeTarget: 'sword',
+    stage: 1, maxStage: 1, repeatStage: null, world: 'normal', battleSpeed: 1, forgeTarget: 'sword', lastSeen: 0,
+    autoFarm: { on: false, done: 0, stopHpPct: 30, stopGold: 0, stopKeys: 0, maxBattles: 0 },
+    quests: { tutorial: { done: [] }, daily: { date: '', progress: {}, claimed: false }, streak: { count: 0, last: '' } },
+    audio: { sfx: true, vol: 0.5 },
+    lang: 'ko',
     battle: { inBattle: false, isRaid: false, raidTurnsLeft: 15, monster: null, turn: 1, isPlayerTurn: true },
   };
 }
 let S = defaultState();
 
-let saveWarned = false;
-function save() {
+let saveWarned = false, _saveTimer = null, _lastSaveAt = 0, _saveDirty = false;
+// 실제 쓰기 (즉시)
+function writeSave() {
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+  _saveDirty = false; _lastSaveAt = Date.now();
+  S.lastSeen = _lastSaveAt; // 오프라인 진행 계산 기준 시각
+  bumpStats(); // 저장 시점 = 상태가 바뀐 시점이므로 스탯 캐시를 무효화한다
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }
   catch (e) {
     if (saveWarned) return;
@@ -267,6 +276,19 @@ function save() {
     toast('⚠️ 세이브를 저장하지 못했습니다 (저장 공간 부족 또는 시크릿 모드).<br>[💾 세이브]로 진행 상황을 백업해 두세요.', 'err');
   }
 }
+function saveNow() { writeSave(); }
+// 연속 클릭·연속 단조에서 저장을 합쳐 프레임 드랍을 줄인다 (최대 400ms 지연, 탭 종료 시 flush)
+function save() {
+  if (Date.now() - _lastSaveAt > 400) return writeSave();
+  _saveDirty = true;
+  if (!_saveTimer) _saveTimer = setTimeout(() => { _saveTimer = null; writeSave(); }, 400);
+}
+function flushSave() { if (_saveDirty || _saveTimer) writeSave(); }
+try {
+  document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
+  window.addEventListener('pagehide', flushSave);
+  window.addEventListener('beforeunload', flushSave);
+} catch (_) { }
 function load() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { d = null; }
@@ -311,6 +333,23 @@ function sanitize() {
   S.codex = { swords: {}, armors: {}, skills: {}, monsters: {}, pets: {}, costumes: {}, ...(S.codex || {}) };
   S.relics = S.relics || {};
   S.stage = Math.max(1, S.stage | 0); S.maxStage = Math.max(S.stage, S.maxStage | 0);
+  S.lastSeen = Math.max(0, S.lastSeen | 0);
+  const afDef = def.autoFarm;
+  S.autoFarm = { ...afDef, ...(S.autoFarm || {}) };
+  for (const k of ['done', 'stopHpPct', 'stopGold', 'stopKeys', 'maxBattles']) S.autoFarm[k] = Math.max(0, S.autoFarm[k] | 0);
+  S.autoFarm.on = !!S.autoFarm.on;
+  const qDef = def.quests;
+  S.quests = { ...qDef, ...(S.quests || {}) };
+  S.quests.tutorial = { ...qDef.tutorial, ...(S.quests.tutorial || {}) };
+  if (!Array.isArray(S.quests.tutorial.done)) S.quests.tutorial.done = [];
+  S.quests.daily = { ...qDef.daily, ...(S.quests.daily || {}) };
+  if (!S.quests.daily.progress || typeof S.quests.daily.progress !== 'object') S.quests.daily.progress = {};
+  S.quests.streak = { ...qDef.streak, ...(S.quests.streak || {}) };
+  S.audio = { ...def.audio, ...(S.audio || {}) };
+  S.audio.sfx = !!S.audio.sfx;
+  S.audio.vol = Math.max(0, Math.min(1, Number(S.audio.vol) || 0));
+  checkDailyReset();
+  if (typeof applyLang === 'function') applyLang();
   if (![1, 2, 'skip'].includes(S.battleSpeed)) S.battleSpeed = 1;
   if (!WORLDS.some(w => w.id === S.world)) S.world = 'normal';
   S.battle = { inBattle: false, isRaid: false, raidTurnsLeft: 15, monster: null, turn: 1, isPlayerTurn: true };
@@ -319,6 +358,7 @@ function sanitize() {
   for (const s of h.skills) unlockCodex('skills', s.name, true);
   if (h.pets.equipped) unlockCodex('pets', h.pets.equipped, true);
   h.costumes.owned.forEach(cid => unlockCodex('costumes', cid, true));
+  bumpStats();
   h.maxHp = maxHp(); h.hp = Math.min(Math.max(1, h.hp | 0), h.maxHp);
 }
 function unlockCodex(cat, id, silent) {
@@ -399,13 +439,17 @@ function petBonus() {
 
 function totalSteps(e) { return CF.totalSteps(e); }
 function equipBonus(kind, e = S.hero[kind]) { return CF.equipStat(e, EQUIP[e.grade], kind === 'sword'); }
+// stats() 는 전투 1턴에 여러 번 호출된다 → 버전 카운터로 메모이제이션.
+let _statsV = 0, _statsCache = null, _statsCacheV = -1;
+function bumpStats() { _statsV++; }
 function stats() {
+  if (_statsCache && _statsCacheV === _statsV) return _statsCache;
   const C = codexBonus(), R = relicBonus(), U = runeBonus(), Cos = costumeBonus(), CR = codexRewardBonus(), P = petBonus();
   const L = S.hero.statLevels, h = S.hero;
   const v = (x) => x || 0;
   const all = v(R.allPct) + v(Cos.allPct) + v(CR.allPct);
   const finAmp = (1 + v(CR.finalDmgPct) / 100);
-  return {
+  const out = {
     maxHp: Math.floor((140 + L.maxHp * 75 + v(R.flatHp) + U.hp) * (1 + (v(C.hpPct) + v(Cos.hpPct) + v(CR.hpPct) + v(P.hpPct) + all) / 100)),
     atk: Math.floor((14 + L.atk * 13 + equipBonus('sword') + h.bossSword.attackBonus + v(R.flatAtk) + U.atk) * (1 + (v(C.atkPct) + v(Cos.atkPct) + v(CR.atkPct) + v(P.atkPct) + all) / 100) * finAmp),
     def: Math.floor((5 + L.def * 13 + equipBonus('armor') + h.bossArmor.defenseBonus + v(R.flatDef) + U.def) * (1 + (v(C.defPct) + v(Cos.defPct) + v(CR.defPct) + v(P.defPct) + all) / 100)),
@@ -418,12 +462,19 @@ function stats() {
     runeMult: 1 + U.fin / 100,
     potion: Math.min(0.95, 0.40 + v(R.potionPct) / 100),
   };
+  _statsCache = out; _statsCacheV = _statsV;
+  return out;
 }
 const maxHp = () => stats().maxHp;
 const dmgReduction = (def) => CF.dmgReduction(def);
 // 최대 체력이 오르면 현재 체력도 같은 만큼 오름
 function withHpDelta(fn) {
-  const before = maxHp(); const r = fn(); const after = maxHp();
+  bumpStats();
+  const before = maxHp();
+  bumpStats();
+  const r = fn();
+  bumpStats();
+  const after = maxHp();
   S.hero.maxHp = after;
   if (after > before) S.hero.hp = Math.min(after, S.hero.hp + after - before);
   S.hero.hp = Math.min(S.hero.hp, after);
@@ -442,6 +493,7 @@ function buyTrain(key, n) {
       S.hero.gold -= c; S.hero.statLevels[key]++; bought++;
     }
   });
+  if (bought) { questEvent('train', bought); tutorialComplete('train'); }
   save(); return bought;
 }
 
@@ -489,6 +541,7 @@ function dpsOf(st = stats(), atkOverride) {
 function basicAttack(mon) {
   const st = stats(), crit = Math.random() * 100 < st.critRate;
   const raw = Math.floor(st.atk * (crit ? st.critDmg / 100 : 1) * (mon.isBoss ? 1 + st.bossDmg / 100 : 1) * st.runeMult);
+  sfx(crit ? 'crit' : 'hit');
   return { dmg: monsterTaken(raw, mon.def), crit };
 }
 function castSkill(sk, mon) {
@@ -553,6 +606,9 @@ function grantReward(r) { if (r.keys) S.hero.keys += r.keys; else S.hero.gold +=
 // 결과: {kind, grade, name, statText, tag, tagType:'equip'|'sell'|'key', banner, gold, keys}
 function openOne(type) {
   const grade = rollGrade(type), h = S.hero;
+  sfx('chest');
+  questEvent('chest');
+  tutorialComplete('chest');
   if (type === 'sword' || type === 'armor') {
     const name = pick((type === 'sword' ? SWORD_POOL : ARMOR_POOL)[grade]), cat = type === 'sword' ? 'swords' : 'armors', word = type === 'sword' ? '검' : '방어구';
     unlockCodex(cat, name);
@@ -688,6 +744,8 @@ function enhanceInfo(e) { return CF.enhanceInfo(e, EQUIP[e.grade]); }
 function enhanceTry(kind) {
   const e = S.hero[kind], info = enhanceInfo(e);
   if (isMaxed(e) || S.hero.gold < info.cost) return null;
+  questEvent('forge');
+  tutorialComplete('forge');
   S.hero.gold -= info.cost;
   const ok = Math.random() * 100 < info.final;
   let gain = 0;
@@ -695,6 +753,7 @@ function enhanceTry(kind) {
     if (ok) { stepUp(e); e.pityBonus = 0; }
     else { gain = r1(Math.max(1.5, (100 - info.final) * 0.14)); e.pityBonus = Math.min(100, r1(e.pityBonus + gain)); }
   });
+  sfx(ok ? 'levelup' : 'lose');
   save();
   return { ok, cost: info.cost, gain, pity: e.pityBonus, status: enhanceStatus(e) };
 }
@@ -704,6 +763,7 @@ function synthRune(id, tier) {
   const a = S.hero.runeCounts[id];
   if (tier >= 8 || a[tier] < 3) return false;
   withHpDelta(() => { a[tier] -= 3; a[tier + 1]++; });
+  questEvent('rune');
   save(); return true;
 }
 function synthAll() {
@@ -715,6 +775,7 @@ function synthAll() {
       if (hi >= 0) parts.push(`${t.icon} ${t.name} → ${RUNE_TIERS[hi].badge}`);
     }
   });
+  if (total) questEvent('rune', total);
   save(); return { total, parts };
 }
 function grantRunes(n) {
@@ -1670,7 +1731,7 @@ function resetGame() {
 
 // ----- 장면 -----
 function switchScene(id) {
-  if (id !== 'scene-battle') { clearAuto(); S.battle.inBattle = false; }
+  if (id !== 'scene-battle') { clearAuto(); S.battle.inBattle = false; if (id === 'scene-menu' && S.autoFarm?.on) stopAutoFarm(txt('ui.autofarm.reason.town', '마을 귀환')); }
   document.querySelectorAll('.scene').forEach(s => s.classList.toggle('active', s.id === id));
   $('top-bar').classList.toggle('hidden', id === 'scene-title');
   refreshAll();
@@ -1787,6 +1848,10 @@ function renderMenu(st) {
     mb(14, 'gold', '🏆 영웅 업적의 전당' + (hasAch ? '<span class="red-dot">!</span>' : ''), '도감 · 처치 · 강화 등 열쇠/골드 수급', 'openAchievements()'),
     mb(15, 'red', '👹 차원 레이드 포탈', '거대 보스 토벌 (무지개별 조각 &amp; 대량 골드 파밍)', 'openRaidPortal()'),
     mb(16, '', '⏩ 전투 배속 설정', spd, 'openSpeed()'),
+    mb(17, 'cyan', txt('ui.menu.autofarm', '🔁 자동 파밍 (연속 사냥 &amp; 정지 조건)'), afStatusText(), 'openAutoFarm()'),
+    mb(18, 'gold', txt('ui.menu.quests', '📜 튜토리얼 &amp; 일일 퀘스트') + (dailiesClaimable() ? '<span class="red-dot">!</span>' : ''), questsSubText(), 'openQuests()'),
+    mb(19, '', txt('ui.menu.audio', '🔊 사운드 설정'), S.audio.sfx ? txt('ui.audio.onShort', '켜짐 · 볼륨 {v}%', { v: Math.round(S.audio.vol * 100) }) : txt('ui.audio.offShort', '꺼짐 (배터리 절약)'), 'openAudio()'),
+    mb(20, '', txt('ui.menu.lang', '🌐 언어 / Language'), langStatusText(), 'openLang()'),
     mb(0, 'red', '🚪 타이틀 화면으로 [ESC]', '게임 시작 화면으로 복귀', "switchScene('scene-title')", true),
   ].join('');
 }
@@ -2852,6 +2917,348 @@ function raidTimeOver() {
   `), 800);
 }
 
+// ===== i18n (T1): 번역 조회 + 언어 적용 =====
+const fmtVars = (tpl, vars) => (vars ? String(tpl).replace(/\{(\w+)\}/g, (m, k) => (vars[k] === undefined ? m : String(vars[k]))) : tpl);
+/** 번역 조회: 사전이 없으면(테스트/구버전) 한국어 원문을 그대로 쓴다. */
+function txt(key, fallback, vars) {
+  const src = (typeof I18N !== 'undefined' && I18N && typeof I18N.t === 'function') ? I18N.t(key, fallback, vars) : (fallback === undefined ? key : fallback);
+  return fmtVars(src, vars);
+}
+const LANGS = ['ko', 'en', 'es'];
+const LANG_META = [{ id: 'ko', label: '한국어', flag: '🇰🇷' }, { id: 'en', label: 'English', flag: '🇬🇧' }, { id: 'es', label: 'Español', flag: '🇪🇸' }];
+function applyLang() {
+  S.lang = LANGS.includes(S.lang) ? S.lang : 'ko';
+  if (typeof I18N !== 'undefined' && I18N && typeof I18N.setLang === 'function') I18N.setLang(S.lang);
+  if (typeof document !== 'undefined' && document.documentElement) document.documentElement.lang = S.lang;
+}
+function setLangName(id) {
+  if (!LANGS.includes(id)) return;
+  S.lang = id; applyLang(); saveNow();
+  if (isOpen('lang')) refreshModal('lang', txt('ui.lang.title', '🌐 언어 선택 / Language'), langHtml());
+  refreshAll();
+  toast(txt('ui.lang.set', '언어를 {lang}로 변경했습니다.', { lang: id.toUpperCase() }), 'ok');
+}
+const langStatusText = () => (LANG_META.find(l => l.id === S.lang) || LANG_META[0]).label;
+function questsSubText() {
+  const v = { a: tutorialDoneCount(), b: TUTORIAL.length, c: dailyDoneCount(), d: dailyList().length };
+  return S.quests.daily.claimed
+    ? txt('ui.menu.questsSubClaimed', '튜토리얼 {a}/{b} · 오늘 {c}/{d} 수령완료', v)
+    : txt('ui.menu.questsSub', '튜토리얼 {a}/{b} · 오늘 {c}/{d}', v);
+}
+const LT = '🌐 언어 선택 / Language';
+function langHtml() {
+  const rows = LANG_META.map(l => {
+    const cov = (typeof I18N !== 'undefined' && I18N && I18N.coverage) ? I18N.coverage(l.id) : 0;
+    const cur = l.id === S.lang;
+    return `<div class="mrow"><div class="l"><b>${l.flag} ${l.label}${cur ? ' ✅' : ''}</b><small style="color:var(--sub)">${txt('ui.lang.coverage', '번역 문구 {n}개', { n: cov })}</small></div>
+      <div class="bts"><button class="btn mini ${cur ? 'green' : ''}" onclick="setLangName('${l.id}')">${cur ? txt('ui.lang.current', '현재 언어') : l.id.toUpperCase()}</button></div></div>`;
+  }).join('');
+  return `<div class="mlist">${rows}</div>
+  <small style="color:var(--sub)">${txt('ui.lang.note', '번역은 순차적으로 적용됩니다. 아직 번역이 없는 문구는 한국어로 표시됩니다.')}</small>
+  <button class="btn full" onclick="closeModal('lang')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function openLang() { openModal('lang', 520, LT, langHtml()); }
+
+// ===== 사운드 (칩튠 SFX, WebAudio · 외부 파일 없음) =====
+const SFX_DEFS = {
+  click: { type: 'square', vol: 0.14, notes: [[660, 0.04]] },
+  hit: { type: 'square', vol: 0.18, notes: [[240, 0.05], [170, 0.05]] },
+  crit: { type: 'square', vol: 0.22, notes: [[440, 0.04], [660, 0.04], [880, 0.07]] },
+  win: { type: 'triangle', vol: 0.22, notes: [[523, 0.07], [659, 0.07], [784, 0.12]] },
+  lose: { type: 'sawtooth', vol: 0.16, notes: [[330, 0.11], [247, 0.11], [165, 0.2]] },
+  chest: { type: 'square', vol: 0.18, notes: [[784, 0.05], [988, 0.05], [1175, 0.1]] },
+  coin: { type: 'square', vol: 0.14, notes: [[988, 0.04], [1319, 0.06]] },
+  levelup: { type: 'square', vol: 0.22, notes: [[523, 0.06], [659, 0.06], [784, 0.06], [1047, 0.16]] },
+};
+let AUDIO_CTX = null, AUDIO_MASTER = null, SFX_MUTE = false;
+const _sfxAt = {};
+function audioCtx() {
+  if (AUDIO_CTX !== null) return AUDIO_CTX || null;
+  const Ctx = (typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)) || null;
+  if (!Ctx) { AUDIO_CTX = false; return null; }
+  try {
+    AUDIO_CTX = new Ctx();
+    AUDIO_MASTER = AUDIO_CTX.createGain();
+    AUDIO_MASTER.gain.value = S.audio.vol;
+    AUDIO_MASTER.connect(AUDIO_CTX.destination);
+  } catch (e) { AUDIO_CTX = false; AUDIO_MASTER = null; }
+  return AUDIO_CTX || null;
+}
+/** Play a tiny chiptune blip. Throttled per name so loops (100k chests) stay silent-ish. */
+function sfx(name) {
+  if (SFX_MUTE || !S.audio || !S.audio.sfx) return false;
+  const def = SFX_DEFS[name]; if (!def) return false;
+  const now = Date.now();
+  if (now - (_sfxAt[name] || 0) < 45) return false;
+  _sfxAt[name] = now;
+  const ctx = audioCtx(); if (!ctx) return false;
+  if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e) {} }
+  try {
+    let t = ctx.currentTime + 0.005;
+    for (const [freq, dur] of def.notes) {
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      osc.type = def.type;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(def.vol, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g); g.connect(AUDIO_MASTER);
+      osc.start(t); osc.stop(t + dur + 0.03);
+      t += dur * 0.9;
+    }
+    return true;
+  } catch (e) { return false; }
+}
+function setSfxVolume(v) {
+  S.audio.vol = Math.max(0, Math.min(1, Number(v) || 0));
+  if (AUDIO_MASTER) AUDIO_MASTER.gain.value = S.audio.vol;
+  save();
+  const el = $('sfx-vol-label'); if (el) el.textContent = `${Math.round(S.audio.vol * 100)}%`;
+}
+function toggleSfx() {
+  S.audio.sfx = !S.audio.sfx; saveNow();
+  if (S.audio.sfx) sfx('chest');
+  const el = $('sfx-toggle'); if (el) el.textContent = S.audio.sfx ? '🔊 켜짐' : '🔇 꺼짐';
+  toast(S.audio.sfx ? txt('ui.audio.turnedOn', '🔊 사운드를 켰습니다.') : txt('ui.audio.turnedOff', '🔇 사운드를 껐습니다 (배터리 절약).'), S.audio.sfx ? 'ok' : '');
+  refreshAll();
+}
+const AT = '🔊 사운드 설정';
+function audioHtml() {
+  const a = S.audio;
+  const tests = ['hit', 'crit', 'win', 'lose', 'chest', 'levelup'];
+  return `<div class="strip"><span>${txt('ui.common.status', '상태:')} <b id="sfx-toggle" style="color:${a.sfx ? 'var(--green)' : 'var(--sub)'}">${a.sfx ? txt('ui.audio.on', '🔊 켜짐') : txt('ui.audio.off', '🔇 꺼짐')}</b></span><span>${txt('ui.audio.volume', '🔉 볼륨')} <b id="sfx-vol-label">${Math.round(a.vol * 100)}%</b></span></div>
+  <button class="btn ${a.sfx ? 'red' : 'green'} full" onclick="toggleSfx()">${a.sfx ? txt('ui.audio.disable', '🔇 사운드 끄기') : txt('ui.audio.enable', '🔊 사운드 켜기')}</button>
+  <div class="mrow"><div class="l"><b>${txt('ui.audio.volume', '🔉 볼륨')}</b><small style="color:var(--sub)">${txt('ui.audio.volumeHint', '칩튠 효과음만 조절됩니다 (BGM 없음)')}</small></div>
+    <div class="bts"><input type="range" min="0" max="100" step="5" value="${Math.round(a.vol * 100)}" style="width:130px" oninput="setSfxVolume(this.value / 100)"></div></div>
+  <div class="mlist">
+    ${tests.map(k => `<div class="mrow"><div class="l"><b>${txt('ui.audio.test.' + k, k)}</b></div><div class="bts"><button class="btn mini" onclick="sfx('${k}')">${txt('ui.audio.play', '▶ 재생')}</button></div></div>`).join('')}
+  </div>
+  <small style="color:var(--sub)">${txt('ui.audio.note', '모든 소리는 브라우저에서 실시간 합성됩니다 (오디오 파일 없음 → 로딩 0초). 브라우저 정책상 첫 터치 이후에 재생됩니다.')}</small>
+  <button class="btn full" onclick="closeModal('audio')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function openAudio() { openModal('audio', 520, AT, audioHtml()); }
+
+// ===== 튜토리얼 & 일일 퀘스트 =====
+const TUTORIAL = [
+  { id: 'stage1', label: '던전에서 1회 승리', reward: { gold: 300 } },
+  { id: 'chest', label: '소환 상자 1회 개봉', reward: { keys: 3 } },
+  { id: 'forge', label: '대장간 강화 1회 시도', reward: { gold: 500 } },
+  { id: 'train', label: '영웅 훈련 1회', reward: { gold: 500 } },
+  { id: 'stage10', label: 'Stage 10 보스 격파', reward: { keys: 5 } },
+];
+const DAILY_META = {
+  forge: { label: '대장간 강화 시도', icon: '🔨', reward: { keys: 3 } },
+  chest: { label: '소환 상자 개봉', icon: '📦', reward: { keys: 3 } },
+  battle: { label: '전투 승리', icon: '⚔️', reward: { keys: 3 } },
+  train: { label: '영웅 훈련', icon: '💪', reward: { gold: 3000 } },
+  rune: { label: '룬 합성', icon: '💎', reward: { gold: 4000 } },
+};
+let _dailyCache = { date: '', list: null }, QUEST_NEWS = [];
+function dailyList() {
+  const date = S.quests.daily.date;
+  if (!_dailyCache || _dailyCache.date !== date || !_dailyCache.list) _dailyCache = { date, list: CF.pickDailyQuests(date, CF.DAILY_POOL) };
+  return _dailyCache.list;
+}
+const questRewardText = (r) => (r.keys ? `🗝️ ${r.keys}개` : `${fmt(r.gold)}G`);
+function grantQuestReward(r) { if (r.keys) S.hero.keys += r.keys; else S.hero.gold += r.gold; }
+function tutorialComplete(id) {
+  const q = S.quests.tutorial;
+  if (q.done.includes(id)) return false;
+  const step = TUTORIAL.find(t => t.id === id); if (!step) return false;
+  q.done.push(id); grantQuestReward(step.reward);
+  toast(txt('ui.quests.tutToast', '✅ 튜토리얼 완료: {label} (+{reward})', { label: step.label, reward: questRewardText(step.reward) }), 'ok');
+  return true;
+}
+function questEvent(type, n = 1) {
+  let changed = false;
+  for (const d of dailyList()) {
+    if (!DAILY_META[d.id]) continue;
+    const cur = S.quests.daily.progress[d.id] | 0;
+    if (cur >= d.target) continue;
+    const next = Math.min(d.target, cur + n);
+    if (next !== cur) { S.quests.daily.progress[d.id] = next; changed = true; }
+  }
+  return changed;
+}
+const dailyDoneCount = () => dailyList().filter(d => (S.quests.daily.progress[d.id] | 0) >= d.target).length;
+const dailiesClaimable = () => !S.quests.daily.claimed && dailyDoneCount() >= dailyList().length;
+const tutorialDoneCount = () => S.quests.tutorial.done.length;
+function claimDailies() {
+  if (S.quests.daily.claimed) return infoModal(txt('ui.quests.claimTitle', '🎉 일일 퀘스트 완료'), txt('ui.quests.alreadyClaimed', '오늘의 보상은 이미 수령했습니다.<br>내일 다시 도전하세요!'));
+  if (!dailiesClaimable()) return infoModal(txt('ui.quests.claimTitle', '🎉 일일 퀘스트 완료'), txt('ui.quests.remaining', '아직 {n}개의 퀘스트가 남았습니다.', { n: dailyList().length - dailyDoneCount() }));
+  let keys = 0, gold = 0;
+  for (const d of dailyList()) { const r = DAILY_META[d.id].reward; if (r.keys) keys += r.keys; else gold += r.gold; }
+  const streak = Math.max(1, Math.min(7, S.quests.streak.count | 0));
+  S.hero.keys += keys + streak; S.hero.gold += gold;
+  S.quests.daily.claimed = true;
+  saveNow(); refreshAll();
+  if (isOpen('quests')) refreshModal('quests', QT, questsHtml());
+  const goldTxt = gold ? txt('ui.quests.claimBodyGold', ' · <b>{gold}G</b>', { gold: fmt(gold) }) : '';
+  infoModal(txt('ui.quests.claimTitle', '🎉 일일 퀘스트 완료'),
+    txt('ui.quests.claimBody', '보상 획득: <b>🗝️ {keys}개</b>{gold}', { keys: keys + streak, gold: goldTxt }) +
+    `<br><small style="color:var(--sub)">${txt('ui.quests.claimNote', '연속 접속 {streak}일 보너스 +{bonus} 포함', { streak: S.quests.streak.count, bonus: streak })}</small>`);
+}
+function checkDailyReset() {
+  const today = CF.dailyDateKey();
+  const q = S.quests.daily;
+  if (q.date === today) return false;
+  q.date = today; q.progress = {}; q.claimed = false;
+  const next = CF.streakNext(S.quests.streak, today);
+  S.quests.streak = { count: next.count, last: next.last };
+  _dailyCache = null;
+  if (next.changed && next.count > 1) QUEST_NEWS.push(txt('ui.quests.streakNews', '🔥 연속 접속 {n}일!', { n: next.count }));
+  return true;
+}
+const QT = '📜 안내 &amp; 일일 퀘스트';
+function questsHtml() {
+  const tut = TUTORIAL.map((t, i) => {
+    const done = S.quests.tutorial.done.includes(t.id);
+    return `<div class="mrow"><div class="l"><b style="color:${done ? 'var(--green)' : 'var(--text)'}">${done ? '✅' : '⬜'} ${i + 1}. ${t.label}</b><small style="color:var(--gold)">${txt('ui.quests.reward', '보상 {reward}', { reward: questRewardText(t.reward) })}</small></div></div>`;
+  }).join('');
+  const daily = dailyList().map(d => {
+    const meta = DAILY_META[d.id], cur = Math.min(d.target, S.quests.daily.progress[d.id] | 0), pct = Math.round((cur / d.target) * 100);
+    return `<div class="mrow"><div class="l"><b>${meta.icon} ${meta.label} <span style="color:var(--cyan)">${cur}/${d.target}</span></b>
+      <small style="color:var(--gold)">${txt('ui.quests.reward', '보상 {reward}', { reward: questRewardText(meta.reward) })}</small>
+      <div class="bar12" style="margin-top:4px"><div style="width:${pct}%"></div></div></div></div>`;
+  }).join('');
+  const claimable = dailiesClaimable();
+  const claimLabel = S.quests.daily.claimed ? txt('ui.quests.claimed', '✅ 오늘 보상 수령 완료')
+    : claimable ? txt('ui.quests.claim', '🎁 일일 보상 + 연속 접속 보너스 받기')
+    : txt('ui.quests.pending', '모든 퀘스트를 완료하면 보상 획득');
+  return `<div class="strip"><span>${txt('ui.quests.tutDone', '튜토리얼')} <b>${tutorialDoneCount()}/${TUTORIAL.length}</b></span><span>${txt('ui.quests.dailyDone', '오늘의 퀘스트')} <b>${dailyDoneCount()}/${dailyList().length}</b></span><span>${txt('ui.quests.streak', '🔥 연속 접속')} <b>${S.quests.streak.count}</b></span></div>
+    <div class="ptitle" style="margin:0">${txt('ui.quests.tutorial', '🧭 처음이라면 (튜토리얼)')}</div>
+    <div class="mlist">${tut}</div>
+    <div class="ptitle" style="margin:0">${txt('ui.quests.daily', '📅 오늘의 퀘스트 · {date}', { date: S.quests.daily.date })}</div>
+    <div class="mlist">${daily}</div>
+    <button class="btn ${claimable ? 'gold' : ''} full" ${claimable ? '' : 'disabled'} onclick="claimDailies()">${claimLabel}</button>
+    <small style="color:var(--sub)">${txt('ui.quests.note', '일일 퀘스트는 매일 00:00(브라우저 시간)에 새로 3개가 열립니다. 연속 접속 시 보너스 열쇠가 최대 7개까지 늘어납니다.')}</small>
+    <button class="btn full" onclick="closeModal('quests')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function openQuests() { openModal('quests', 560, QT, questsHtml()); }
+
+// ===== 오프라인 진행 (자리를 비운 동안의 자동 파밍) =====
+// UI 없이 전투 1회를 계산한다 (skipResolve 와 동일한 공식).
+function simOneBattle(stage) {
+  const mon = makeMonster(stage), h = S.hero, st = stats();
+  h.hp = st.maxHp; h.potionCooldown = 0;
+  const skills = h.equippedSkills.map(ownedSkill).filter(Boolean);
+  skills.forEach(k => k.cooldown = 0);
+  let turns = 0;
+  while (mon.hp > 0 && h.hp > 0 && turns < 80) {
+    turns++;
+    if (h.hp <= st.maxHp * 0.45 && h.potionCooldown <= 0) {
+      h.hp = Math.min(st.maxHp, h.hp + Math.floor(st.maxHp * st.potion)); h.potionCooldown = 3;
+    } else {
+      const sk = skills.find(k => k.cooldown === 0);
+      mon.hp = Math.max(0, mon.hp - (sk ? castSkill(sk, mon) : basicAttack(mon)).dmg);
+    }
+    if (mon.hp <= 0) break;
+    const breath = mon.isBoss && turns % 3 === 0;
+    h.hp = Math.max(0, h.hp - heroTaken(breath ? Math.floor(mon.atk * 1.65) : mon.atk));
+    if (h.potionCooldown > 0) h.potionCooldown--;
+    skills.forEach(k => { if (k.cooldown > 0) k.cooldown--; });
+  }
+  return { win: mon.hp <= 0, gold: Math.floor(mon.gold * (1 + st.goldPct / 100)) };
+}
+let OFFLINE = null;
+function runOfflineProgress() {
+  const now = Date.now();
+  const r = CF.offlineProgress({ lastSeen: S.lastSeen, now });
+  S.lastSeen = now;
+  if (r.battles < 3) { save(); return null; }
+  const stage = Math.max(1, S.stage);
+  // 전부 시뮬레이션하지 않고 표본 전투로 평균 수익을 추정한다 (로딩 지연 방지)
+  const sample = Math.min(24, Math.max(6, Math.round(r.battles / 40)));
+  let wins = 0, gold = 0;
+  SFX_MUTE = true;
+  try { for (let i = 0; i < sample; i++) { const b = simOneBattle(stage); if (b.win) { wins++; gold += b.gold; } } }
+  finally { SFX_MUTE = false; }
+  const winRate = wins / sample;
+  const battles = Math.min(r.battles, 3000);
+  const totalGold = wins ? Math.floor((gold / wins) * battles * winRate) : 0;
+  const totalKeys = Math.floor(battles * 0.02 * winRate);
+  S.hero.hp = stats().maxHp; // 오프라인 동안 마을에서 정비한 것으로 처리
+  S.hero.gold += totalGold; S.hero.keys += totalKeys;
+  saveNow();
+  OFFLINE = { ...r, battles, sample, winRate, gold: totalGold, keys: totalKeys, stage };
+  return OFFLINE;
+}
+// ===== 자동 파밍 (연속 사냥 + 정지 조건) =====
+const AF_T = '🔁 자동 파밍';
+function afStatusText() {
+  const a = S.autoFarm || {}, st = stats();
+  if (!a.on) return txt('ui.autofarm.statusOff', '꺼짐 · 조건을 정해 연속 사냥');
+  const hpPct = Math.round((S.hero.hp / Math.max(1, st.maxHp)) * 100);
+  return txt('ui.autofarm.statusOn', '가동 중 · {n}회 · HP {hp}% · 중지 HP {hpmin}%', { n: a.done | 0, hp: hpPct, hpmin: a.stopHpPct });
+}
+function afHtml() {
+  const a = S.autoFarm, st = stats();
+  const hpPct = Math.round((S.hero.hp / Math.max(1, st.maxHp)) * 100);
+  const row = (label, key, val, hint) => `<div class="mrow"><div class="l"><b>${label}</b><small style="color:var(--sub)">${hint}</small></div>
+    <div class="bts"><input type="number" min="0" step="1" value="${val}" style="width:96px;background:#0b0d13;color:var(--text);border:2px solid var(--iron);padding:6px;font-family:inherit" onchange="setFarmOpt('${key}', this.value)"></div></div>`;
+  const unl = txt('ui.autofarm.unlimited', '0 = 무제한');
+  return `<div class="strip"><span>${txt('ui.common.status', '상태:')} <b style="color:${a.on ? 'var(--green)' : 'var(--sub)'}">${a.on ? txt('ui.autofarm.on', '가동 중') : txt('ui.autofarm.off', '꺼짐')}</b></span><span>${txt('ui.common.progress', '진행')} <b>${a.done | 0}</b>${txt('ui.common.times', '회')}</span><span>HP <b>${hpPct}%</b></span></div>
+  <button class="btn ${a.on ? 'red' : 'green'} full" onclick="toggleAutoFarm()">${a.on ? txt('ui.autofarm.disable', '⏹ 자동 파밍 끄기') : txt('ui.autofarm.enable', '▶️ 자동 파밍 켜기')}</button>
+  <div class="mlist">
+    ${row(txt('ui.autofarm.maxBattles', '⏰ 최대 전투 횟수'), 'maxBattles', a.maxBattles, unl)}
+    ${row(txt('ui.autofarm.hpPct', '❤️ HP 중지 기준 (%)'), 'stopHpPct', a.stopHpPct, txt('ui.autofarm.hpHint', '승리 후 HP가 이 비율보다 낮으면 중지'))}
+    ${row(txt('ui.autofarm.gold', '🪙 골드 중지 목표'), 'stopGold', a.stopGold, unl)}
+    ${row(txt('ui.autofarm.keys', '🗝️ 열쇠 중지 목표'), 'stopKeys', a.stopKeys, unl)}
+  </div>
+  <small style="color:var(--sub)">${txt('ui.autofarm.note', '자동 파밍은 결과창을 자동으로 넘기고 다음 층으로 계속 진행합니다. 승리 시 최대 HP의 30%를 회복하며, 패배하거나 마을로 돌아오면 자동으로 꺼집니다.')}</small>
+  <button class="btn full" onclick="closeModal('autofarm')">${txt('ui.common.close', '닫기 [ESC]')}</button>`;
+}
+function afTitle() { return txt('ui.autofarm.title', AF_T); }
+function openAutoFarm() { openModal('autofarm', 520, afTitle(), afHtml()); }
+function setFarmOpt(key, val) {
+  const n = Math.max(0, Math.min(9999999, Math.floor(Number(val) || 0)));
+  S.autoFarm[key] = n; saveNow(); refreshModal('autofarm', afTitle(), afHtml()); refreshAll();
+}
+function toggleAutoFarm() {
+  const a = S.autoFarm; a.on = !a.on; if (a.on) a.done = 0;
+  saveNow();
+  toast(a.on ? txt('ui.autofarm.started', '🔁 자동 파밍 시작 · 결과창이 자동으로 넘어갑니다.') : txt('ui.autofarm.stopped', '⏹ 자동 파밍을 껐습니다.'), a.on ? 'ok' : '');
+  if (isOpen('autofarm')) refreshModal('autofarm', afTitle(), afHtml());
+  refreshAll();
+}
+function stopAutoFarm(reason) {
+  const a = S.autoFarm; if (!a || !a.on) return;
+  a.on = false; saveNow();
+  toast(txt('ui.autofarm.end', '🔁 자동 파밍 종료 · {reason}', { reason }), 'ok');
+  refreshAll();
+}
+function maybeAutoFarm() {
+  const a = S.autoFarm; if (!a || !a.on) return;
+  const st = stats();
+  const reason = CF.farmStopReason({ ...a, hp: S.hero.hp, maxHp: st.maxHp, gold: S.hero.gold, keys: S.hero.keys });
+  if (reason) {
+    stopAutoFarm({ battles: `목표 ${a.maxBattles}회 완료`, gold: `골드 ${fmt(a.stopGold)}G 도달`, keys: `열쇠 ${fmt(a.stopKeys)}개 도달`, hp: `HP ${a.stopHpPct}% 이하` }[reason]);
+    return;
+  }
+  a.done = (a.done | 0) + 1; save();
+  const delay = S.battleSpeed === 'skip' ? 420 : 1050;
+  setTimeout(() => {
+    if (!S.autoFarm.on || curScene() !== 'scene-battle' || S.battle.inBattle) return;
+    if (isOpen('result')) closeModal('result');
+    startBattle();
+  }, delay);
+}
+
+function showOfflineReport() {
+  if (!OFFLINE) return;
+  const o = OFFLINE, hrs = o.awayMs / 3600e3;
+  const awayTxt = hrs >= 1 ? `${hrs.toFixed(1)}h` : `${Math.max(1, Math.round(o.awayMs / 60e3))}min`;
+  const rows = [
+    txt('ui.offline.away', '🌙 자리를 비운 시간: <b>{away}</b>', { away: awayTxt }) + (o.capped ? ` <small style="color:var(--orange-g)">${txt('ui.offline.capped', '(최대 8시간 적립)')}</small>` : ''),
+    txt('ui.offline.battles', '⚔️ 자동 파밍: <b>{n}회</b> 전투 · 승률 {wr}%', { n: fmt(o.battles), wr: Math.round(o.winRate * 100) }) + ` <small style="color:var(--sub)">${txt('ui.offline.efficiency', '(오프라인 효율 50%)')}</small>`,
+    txt('ui.offline.gold', '🪙 획득 골드: <b>+{gold}G</b>', { gold: fmt(o.gold) }),
+    o.keys ? txt('ui.offline.keys', '🗝️ 획득 열쇠: <b>+{n}개</b>', { n: fmt(o.keys) }) : '',
+    txt('ui.offline.stage', '🐾 사냥터: Stage {stage} (던전 입장 층 기준)', { stage: o.stage }),
+    o.winRate < 0.35 ? `<small style="color:var(--red)">${txt('ui.offline.warn', '⚠️ 승률이 낮습니다. 강화 · 훈련으로 전력을 키우면 오프라인 수익이 늘어납니다.')}</small>` : '',
+  ].filter(Boolean).join('<br>');
+  infoModal(txt('ui.offline.title', '🌙 오프라인 수익 보고서'), `${rows}<br><small style="color:var(--dim)">${txt('ui.offline.footer', 'HP는 마을에서 정비한 것으로 처리됩니다.')}</small>`);
+}
+
 function victory() {
   clearAuto(); S.battle.inBattle = false;
   const mon = S.battle.monster, h = S.hero, st = stats(), cleared = S.stage, lines = [];
@@ -2897,17 +3304,26 @@ function victory() {
     if (Math.random() < Math.min(1, 0.90 + st.dropRate / 100 * 0.25)) { h.keys += 2; lines.push('🗝️ 소환 열쇠 +2개 획득!'); }
     lines.push(`💎 일반 룬 드랍: ${grantRunes(1 + Math.floor(cleared / 25))} (룬 합성소에서 승급 가능!)`);
   } else if (Math.random() < Math.min(0.95, 0.55 + st.dropRate / 100 * 0.35)) { h.keys += 1; lines.push('🗝️ 소환 열쇠 +1개 드랍!'); }
+  if (questEvent('battle')) S.quests.daily.progress._b = 1;
+  if (tutorialComplete('stage1') && !lines.some(l => l.includes('튜토리얼'))) lines.push('✅ 튜토리얼: 첫 승리 달성!');
+  if (cleared >= 10 && tutorialComplete('stage10')) lines.push('✅ 튜토리얼: Stage 10 격파 달성!');
+  sfx('win');
   PD.emit('victory', { monster: mon, stage: cleared, lines });
   S.stage = cleared + 1;
   if (S.stage > S.maxStage) { S.maxStage = S.stage; S.repeatStage = null; }
   save();
   lines.forEach(l => log(l, 'win'));
   refreshAll();
-  setTimeout(() => showResult(true, `🏆 Stage ${cleared} 클리어!`, `<div style="color:var(--green);font-weight:bold;font-size:1rem">[${mon.name}] 토벌 성공!</div>${lines.map(l => `<div style="font-size:.82rem;color:${l.startsWith('🪙') ? 'var(--gold)' : l.startsWith('🗝️') ? '#70a1ff' : 'var(--text)'}">${l}</div>`).join('')}`, cleared), S.battleSpeed === 'skip' ? 350 : 900);
+  setTimeout(() => {
+    showResult(true, `🏆 Stage ${cleared} 클리어!`, `<div style="color:var(--green);font-weight:bold;font-size:1rem">[${mon.name}] 토벌 성공!</div>${lines.map(l => `<div style="font-size:.82rem;color:${l.startsWith('🪙') ? 'var(--gold)' : l.startsWith('🗝️') ? '#70a1ff' : 'var(--text)'}">${l}</div>`).join('')}`, cleared);
+    maybeAutoFarm();
+  }, S.battleSpeed === 'skip' ? 350 : 900);
 }
 function defeat() {
   clearAuto(); S.battle.inBattle = false;
   if ($('raid-timer-banner')) $('raid-timer-banner').style.display = 'none';
+  sfx('lose');
+  if (S.autoFarm?.on) stopAutoFarm(txt('ui.autofarm.reason.defeat', '패배 (자동 파밍 중지)'));
   const h = S.hero, loss = Math.floor(h.gold * 0.08); h.gold -= loss; h.hp = stats().maxHp;
   PD.emit('defeat', { monster: S.battle.monster, stage: S.stage });
   heroBattle.play('death', { hold: true }); fxHeroDeath(); save();
@@ -2973,7 +3389,8 @@ document.addEventListener('keydown', (e) => {
 // ===== 시작 =====
 function init() {
   const steps = [
-    () => load(),
+    () => { load(); applyLang(); },
+    () => { OFFLINE = runOfflineProgress(); },
     () => drawTitleBackdrop($('title-bg')),
     () => drawForgeBackdrop($('forge-bg')),
     () => { heroMenu = new HeroView($('menu-hero'), 'right', true); heroChar = new HeroView($('char-hero'), 'right', true); heroBattle = new HeroView($('hero-battle-canvas'), 'right'); },
@@ -2981,6 +3398,17 @@ function init() {
     () => setBanner('🔨 모루가 준비되었습니다. 강화를 시도해 보세요!', ''),
     () => refreshAll(),
     () => PD.emit('ready'),
+    () => { if (OFFLINE) setTimeout(showOfflineReport, 700); },
+    () => { if (QUEST_NEWS.length) setTimeout(() => QUEST_NEWS.forEach(n => toast(n, 'ok')), 1200); },
+    () => {
+      // 첫 사용자 제스처에서 오디오 컨텍스트를 깨우고, 버튼 클릭에 칩튠 클릭음을 붙인다
+      const unlock = () => { audioCtx(); document.removeEventListener('pointerdown', unlock, true); };
+      document.addEventListener('pointerdown', unlock, true);
+      document.addEventListener('click', (e) => {
+        const el = e.target && e.target.closest ? e.target.closest('.btn') : null;
+        if (el) sfx('click');
+      }, true);
+    },
   ];
   for (const s of steps) { try { s(); } catch (err) { console.error(err); } }
 }

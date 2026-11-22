@@ -146,6 +146,75 @@
     return Object.assign({}, def, saved, { hero: Object.assign({}, def.hero, saved.hero) });
   }
 
+  /**
+   * Offline farming window.
+   * Returns how many battles the player "farmed" while away (50% efficiency by
+   * default, 8h cap, 5min grace period) without touching the game state.
+   */
+  function offlineProgress(o = {}) {
+    const capMs = o.capMs == null ? 8 * 3600 * 1000 : o.capMs;
+    const minMs = o.minMs == null ? 5 * 60 * 1000 : o.minMs;
+    const avgBattleMs = o.avgBattleMs || 9000;
+    const efficiency = o.efficiency == null ? 0.5 : o.efficiency;
+    const lastSeen = o.lastSeen || 0;
+    const now = o.now || 0;
+    const awayMs = Math.max(0, now - lastSeen);
+    if (!lastSeen || awayMs < minMs) return { awayMs, capped: false, battles: 0, effectiveMs: 0 };
+    const effectiveMs = Math.min(awayMs, capMs);
+    const battles = Math.floor((effectiveMs / avgBattleMs) * efficiency);
+    return { awayMs, capped: awayMs > capMs, battles, effectiveMs };
+  }
+
+  /**
+   * Auto-farm stop check. Returns a reason code ('battles' | 'gold' | 'keys' | 'hp')
+   * or null when the farm should keep going. `0` disables a condition.
+   */
+  function farmStopReason(a) {
+    if (!a || !a.on) return null;
+    const done = a.done | 0;
+    if (a.maxBattles > 0 && done >= a.maxBattles) return 'battles';
+    if (a.stopGold > 0 && a.gold >= a.stopGold) return 'gold';
+    if (a.stopKeys > 0 && a.keys >= a.stopKeys) return 'keys';
+    if (a.stopHpPct > 0 && a.maxHp > 0 && (a.hp / a.maxHp) * 100 < a.stopHpPct) return 'hp';
+    return null;
+  }
+
+  // --- Daily quests -------------------------------------------------------
+  const DAILY_POOL = [
+    { id: 'forge', target: 5 },
+    { id: 'chest', target: 10 },
+    { id: 'battle', target: 15 },
+    { id: 'train', target: 5 },
+    { id: 'rune', target: 3 },
+  ];
+
+  /** 'YYYY-MM-DD' in local time (daily reset boundary). */
+  function dailyDateKey(d = new Date()) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  /** Deterministic 3-quest rotation for a given day (same date => same quests). */
+  function pickDailyQuests(dateKey, pool = DAILY_POOL, count = 3) {
+    let h = 0;
+    for (const ch of String(dateKey || '')) h = (h * 31 + ch.charCodeAt(0)) % 100000;
+    const n = pool.length, out = [];
+    for (let i = 0; i < Math.min(count, n); i++) out.push(pool[(h + i) % n]);
+    return out;
+  }
+
+  /** Consecutive-login streak update. Same day => unchanged. */
+  function streakNext(s, today) {
+    const count = (s && s.count) | 0, last = (s && s.last) || '';
+    if (last === today) return { count: Math.max(1, count), last: today, changed: false };
+    let next = 1;
+    if (last) {
+      const a = Date.parse(last + 'T00:00:00Z'), b = Date.parse(today + 'T00:00:00Z');
+      if (Number.isFinite(a) && Number.isFinite(b) && Math.round((b - a) / 86400000) === 1) next = Math.min(7, count + 1);
+    }
+    return { count: next, last: today, changed: true };
+  }
+
   /** Auto-forge stop condition. goal: 'max' | '+10' */
   function forgeGoalReached(e, goal) {
     if (goal === '+10') return e.starTier > 0 || e.enhanceLevel >= 10;
@@ -154,6 +223,6 @@
 
   return {
     r1, dmgReduction, monsterTaken, heroTaken, trainCost, engraveCost, totalSteps,
-    isMaxed, equipStat, enhanceInfo, rollGrade, estimateDps, mergeSave, forgeGoalReached,
+    isMaxed, equipStat, enhanceInfo, rollGrade, estimateDps, mergeSave, forgeGoalReached, offlineProgress, farmStopReason, DAILY_POOL, dailyDateKey, pickDailyQuests, streakNext,
   };
 });
