@@ -56,6 +56,26 @@
 
 # Part 2 — Implementation Plan / Plan de Implementación
 
+## Estado de ejecución / Execution status
+
+**Última actualización / Last update:** 2026-11-22 · rama / branch `arena/6a512daa-pixeldungeon-simple`
+
+| Tarea / Task | Estado / Status | Evidencia / Evidence |
+|---|---|---|
+| **1.0** Tests + CI | ✅ Hecho / Done | `src/core/formulas.js` (14 funciones puras), `tests/formulas.test.js`, `tests/save.test.js`, `tests/game-smoke.test.js` (26 tests), `.github/workflows/ci.yml`, `npm test` / `npm run check` |
+| **1.1** No perder la forja (A1.5) | ✅ Hecho / Done | `openOne()` transfiere `enhanceLevel`, `starTier`, `starCount`, `pityBonus`; banner muestra "강화 이전 +7강 → +7강" |
+| **1.2** HP persistente (A1.1) | ✅ Hecho / Done | `startBattle()` ya no rellena HP (solo 30 % si entra a 0), `victory()` cura 30 %, `retreat()` no cura; test de integración |
+| **1.3** Medidor de DPS (A2.3) | ✅ Hecho / Done | `dpsOf()` + `CF.estimateDps()`; visible en menú, personaje, entrenamiento y forja ("DPS 1.240 → 1.380 (+11 %)") |
+| **1.4** Detener forja automática (A2.6) | ✅ Hecho / Done | `UI.forgeStop` + botón ⏹, selector de objetivo `+10`/`MAX`, banner con motivo de parada |
+| **1.5** Modales propios (A2.1) | ✅ Hecho / Done | `infoModal()` / `confirmModal()`; `grep alert(` → 0, `grep confirm(` → 0; reset con doble confirmación |
+| **1.6** Aviso de guardado fallido (A3.7) | ✅ Hecho / Done | `save()` muestra toast `⚠️ 세이브를 저장하지 못했습니다` (una vez por sesión) |
+| **1.7** Exportar / Importar save (A4.1) | ✅ Hecho / Done | `exportSave()` (código Base64 + `.json`), `importSaveDialog()` con validación `sanitize()` y backup automático |
+
+**Pendiente / Pending:** Sprint 2 (2.1 offline, 2.2 auto-farm, 2.3 tutorial/diarias, 2.4 audio, 2.5 caché de `stats()`) y fases i18n T0/T1.
+
+> Cada tarea se puede verificar con `npm test`; los cambios de UI se revisan en el preview local (`npm run serve`).
+
+
 ## Sprint 1 — Quick Wins / Victorias Rápidas (Semanas 1–2)
 
 ### ES
