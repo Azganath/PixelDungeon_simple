@@ -28,11 +28,11 @@
       <div class="title-sub">⚔️ 16-BIT DARK FANTASY PIXEL EDITION ⚔️</div>
     </div>
     <div class="title-actions">
-      <button class="btn orange" data-act="start">⚔️ 게임 시작 [Enter]</button>
+      <button class="btn orange" data-act="start" data-i18n="ui.static.start">⚔️ 게임 시작 [Enter]</button>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-        <button class="btn mini cyan" onclick="exportSave()">💾 세이브 내보내기</button>
-        <button class="btn mini" onclick="importSaveDialog()">📥 세이브 가져오기</button>
-        <button class="btn" data-act="reset">🔄 데이터 초기화 (새 게임)</button>
+        <button class="btn mini cyan" onclick="exportSave()" data-i18n="ui.static.export">💾 세이브 내보내기</button>
+        <button class="btn mini" onclick="importSaveDialog()" data-i18n="ui.static.import">📥 세이브 가져오기</button>
+        <button class="btn" data-act="reset" data-i18n="ui.static.reset">🔄 데이터 초기화 (새 게임)</button>
       </div>
     </div>
   </section>
@@ -40,32 +40,32 @@
   <section class="scene" id="scene-menu">
     <div class="menu-body">
       <div class="panel hero-card">
-        <div class="hero-name">모험가</div>
+        <div class="hero-name" data-i18n="ui.static.heroName">모험가</div>
         <div class="avatar" style="position:relative"><canvas id="menu-hero"></canvas><canvas id="menu-pet" style="position:absolute;bottom:0;right:-18px;width:34px;height:34px;display:none"></canvas></div>
         <div id="menu-gear" style="width:100%;display:flex;flex-direction:column;gap:6px"></div>
       </div>
       <div class="panel menu-opts">
-        <div class="banner"><span>🏰 마을 광장 (MAIN MENU)</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><small>[Enter] 던전 입장 · [ESC] 타이틀</small><button class="btn mini cyan" onclick="exportSave()">💾 세이브</button><button class="btn mini" onclick="importSaveDialog()">📥 가져오기</button><button class="btn mini purple" id="mod-btn" onclick="openModList()">🧩 모드</button></span></div>
+        <div class="banner"><span data-i18n="ui.static.town">🏰 마을 광장 (MAIN MENU)</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><small data-i18n="ui.static.townHint">[Enter] 던전 입장 · [ESC] 타이틀</small><button class="btn mini cyan" onclick="exportSave()" data-i18n="ui.static.exportShort">💾 세이브</button><button class="btn mini" onclick="importSaveDialog()" data-i18n="ui.static.importShort">📥 가져오기</button><button class="btn mini purple" id="mod-btn" onclick="openModList()" data-i18n="ui.static.mods">🧩 모드</button></span></div>
         <div class="stage-bar">
           <div class="stage-row" id="world-row" style="display:none">
-            <label>🌍 월드 선택:</label>
+            <label data-i18n="ui.static.world">🌍 월드 선택:</label>
             <select id="world-select" onchange="setWorld(this.value)"></select>
             <small id="world-desc" style="color:var(--sub)"></small>
           </div>
           <div class="stage-row">
-            <label>🗺️ 층 선택:</label>
+            <label data-i18n="ui.static.floor">🗺️ 층 선택:</label>
             <button class="btn mini" data-act="stage" data-d="-10">◀10</button>
             <button class="btn mini" data-act="stage" data-d="-1">◀</button>
             <select id="stage-select"></select>
             <button class="btn mini" data-act="stage" data-d="1">▶</button>
             <button class="btn mini" data-act="stage" data-d="10">10▶</button>
-            <button class="btn mini gold" data-act="stage-max">최고층</button>
+            <button class="btn mini gold" data-act="stage-max" data-i18n="ui.static.bestFloor">최고층</button>
           </div>
           <div class="stage-row">
-            <label>🔍 층 검색:</label>
-            <input id="stage-search" type="text" placeholder="층 번호 또는 보스/엘리트 검색 (예: 50, 보스)">
-            <button class="btn mini cyan" data-act="stage-go">이동</button>
-            <button class="btn mini" data-act="stage-clear" id="stage-clear" style="display:none">초기화</button>
+            <label data-i18n="ui.static.search">🔍 층 검색:</label>
+            <input id="stage-search" type="text" data-i18n-ph="ui.static.searchPh" placeholder="층 번호 또는 보스/엘리트 검색 (예: 50, 보스)">
+            <button class="btn mini cyan" data-act="stage-go" data-i18n="ui.static.go">이동</button>
+            <button class="btn mini" data-act="stage-clear" id="stage-clear" style="display:none" data-i18n="ui.static.clear">초기화</button>
           </div>
         </div>
         <div class="menu-grid" id="menu-grid"></div>
@@ -77,11 +77,11 @@
     <div class="b-hud">
       <div class="side hero">
         <div class="gem">❤️</div>
-        <div class="info"><div class="nm"><span style="color:var(--cyan)">모험가</span><span id="b-hero-hp"></span></div><div class="bar18 hero"><div id="b-hero-bar"></div></div></div>
+        <div class="info"><div class="nm"><span style="color:var(--cyan)" data-i18n="ui.static.heroName">모험가</span><span id="b-hero-hp"></span></div><div class="bar18 hero"><div id="b-hero-bar"></div></div></div>
       </div>
       <div class="center">
         <div class="stage-badge" id="b-stage"></div>
-        <div class="repeat-ctl" id="b-repeat"><span>🔁 반복중 (골드 35%)</span><button class="btn mini gold" data-act="next-floor">🔼 다음층 도전</button></div>
+        <div class="repeat-ctl" id="b-repeat"><span data-i18n="ui.static.repeating">🔁 반복중 (골드 35%)</span><button class="btn mini gold" data-act="next-floor" data-i18n="ui.static.nextFloor">🔼 다음층 도전</button></div>
       </div>
       <div class="side enemy">
         <div class="gem" id="b-mon-icon"></div>
@@ -89,22 +89,22 @@
       </div>
     </div>
     <div class="arena" id="battle-viewport">
-      <div id="raid-timer-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(139,24,36,0.92);border:2px solid var(--red);padding:4px 12px;font-size:.78rem;font-weight:bold;color:#fff;z-index:20;border-radius:4px;box-shadow:0 0 10px rgba(255,71,87,0.6)">⏳ 차원 붕괴까지: <span id="raid-turns-left" style="color:var(--gold)">15</span>턴</div>
+      <div id="raid-timer-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(139,24,36,0.92);border:2px solid var(--red);padding:4px 12px;font-size:.78rem;font-weight:bold;color:#fff;z-index:20;border-radius:4px;box-shadow:0 0 10px rgba(255,71,87,0.6)"><span data-i18n="ui.static.raid">⏳ 차원 붕괴까지:</span> <span id="raid-turns-left" style="color:var(--gold)">15</span><span data-i18n="ui.static.turnsUnit">턴</span></div>
       <canvas class="bg" id="battle-bg"></canvas>
       <div class="actor hero" id="hero-actor"><canvas id="hero-battle-canvas"></canvas><canvas id="pet-battle-canvas" style="position:absolute;bottom:0;left:-32px;width:36px;height:36px;display:none"></canvas></div>
       <div class="actor enemy" id="enemy-actor"><canvas id="monster-battle-canvas"></canvas></div>
       <canvas class="fx" id="battle-fx-canvas"></canvas>
-      <div class="skip-overlay" id="skip-overlay"><button class="btn orange" data-act="skip">⚡ 스킵 (즉시 결착) [Enter]</button></div>
+      <div class="skip-overlay" id="skip-overlay"><button class="btn orange" data-act="skip" data-i18n="ui.static.skip">⚡ 스킵 (즉시 결착) [Enter]</button></div>
     </div>
     <div class="dock" id="dock"></div>
     <div class="b-log">
-      <div class="hd"><span>📜 실시간 전투 일지</span><span id="b-turn">턴 1</span></div>
+      <div class="hd"><span data-i18n="ui.static.log">📜 실시간 전투 일지</span><span id="b-turn"></span></div>
       <div class="log-box" id="log-box"></div>
     </div>
   </section>
 
   <section class="scene" id="scene-forge">
-    <div class="sub-head">🔨 고대 룬 &amp; 초월 대장간 (TRANSCEND FORGE)<button class="btn" data-act="menu">🏠 마을 광장으로 복귀 [ESC]</button></div>
+    <div class="sub-head"><span data-i18n="ui.static.forgeHead">🔨 고대 룬 &amp; 초월 대장간 (TRANSCEND FORGE)</span><button class="btn" data-act="menu" data-i18n="ui.static.backTown">🏠 마을 광장으로 복귀 [ESC]</button></div>
     <div class="forge-body">
       <div class="altar" id="forge-altar">
         <canvas class="bg" id="forge-bg"></canvas>
@@ -121,7 +121,7 @@
   </section>
 
   <section class="scene" id="scene-character">
-    <div class="sub-head">📜 모험가 상세 정보 (ESTATE ROSTER)<button class="btn" data-act="menu">🏠 마을 광장으로 복귀 [ESC]</button></div>
+    <div class="sub-head"><span data-i18n="ui.static.charHead">📜 모험가 상세 정보 (ESTATE ROSTER)</span><button class="btn" data-act="menu" data-i18n="ui.static.backTown">🏠 마을 광장으로 복귀 [ESC]</button></div>
     <div class="char-body">
       <div class="panel char-left"><div class="pedestal"><canvas id="char-hero"></canvas></div><div id="char-stats"></div></div>
       <div class="char-right" id="char-right"></div>

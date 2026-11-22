@@ -85,3 +85,41 @@ test('T1 — generated bundle is current and covers the whole auto extraction', 
   assert.deepEqual(missing.slice(0, 5), [], 'auto keys must be bundled');
   assert.deepEqual(Object.keys(data.en).sort(), Object.keys(ko).sort());
 });
+
+test('T2 — every Korean text node in index.html is translated at runtime', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')
+    .replace(/<script[\s\S]*?<\/script>/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const hangul = /[\u3131-\u318E\uAC00-\uD7A3]/;
+  // Text nodes with Korean must live inside an element carrying data-i18n.
+  const bad = [];
+  for (const m of html.matchAll(/<([a-zA-Z][\w-]*)([^>]*)>([^<]*)/g)) {
+    if (!hangul.test(m[3])) continue;
+    if (!/data-i18n="[^"]+"/.test(m[2])) bad.push(`${m[1]}: ${m[3].trim().slice(0, 40)}`);
+  }
+  assert.deepEqual(bad, [], 'untranslated static text (add data-i18n)');
+  // Placeholders with Korean must carry data-i18n-ph.
+  for (const m of html.matchAll(/placeholder="([^"]*)"/g)) {
+    if (!hangul.test(m[1])) continue;
+    const tag = html.slice(Math.max(0, m.index - 260), m.index);
+    assert.match(tag.slice(tag.lastIndexOf('<')), /data-i18n-ph="[^"]+"/, `placeholder "${m[1]}" needs data-i18n-ph`);
+  }
+});
+
+test('T2 — every data-i18n key in the shell exists in ko, en and es', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const keys = new Set([...html.matchAll(/data-i18n(?:-ph)?="([A-Za-z0-9_.]+)"/g)].map((m) => m[1]));
+  assert.ok(keys.size >= 20, `expected a translated shell, found ${keys.size} keys`);
+  const missing = [...keys].filter((k) => !(k in ko) || !(k in en) || !(k in es));
+  assert.deepEqual(missing, [], 'shell keys missing from a dictionary');
+  const hangul = /[\u3131-\u318E\uAC00-\uD7A3]/;
+  for (const k of keys) for (const dict of [en, es]) {
+    assert.ok(!hangul.test(dict[k]), `${k} still Korean in ${dict === en ? 'en' : 'es'}`);
+  }
+});
+
+test('T2 — applyStaticI18n rewrites text and placeholders in the active language', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'game.js'), 'utf8');
+  assert.match(src, /function applyStaticI18n\(\)/, 'the shell translator exists');
+  assert.match(src, /applyStaticI18n\(\);\n\}/, 'applyLang() calls it, so setLangName() retranslates the shell');
+});
