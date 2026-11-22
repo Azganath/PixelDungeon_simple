@@ -20,6 +20,8 @@
 | Ganancia de entrenamiento | `inc · (min(lv,100) + (1-0.995^(lv-100))/0.005)` | lineal hasta Lv.100 (saves antiguos intactos) y luego decreciente (~+200 · inc de techo) |
 | Coste de 승급 / rank-up | 1.º gratis, luego 50 000 G (영웅→전설) y 200 000 G (전설→신화) | elimina el 승급 infinito gratuito |
 | Prestigio / Prestige | `1 + 0.10 · estrellas` (máx. 20 → ×3) | +10 % a ATK/DEF/HP y +10 % de oro por estrella |
+| Patrones de jefe (3.3) | escudo 8 % cada 5 turnos (tope 20 %), cura 8 % una vez < 50 %, enfurecer +35 % < 30 %, esbirros +8 % ATK (máx. 3) | alarga los combates de jefe sin convertir el piso 90 en un muro |
+| Estados (3.3) | veneno 5 %/turno ×3, quemadura 4 %/turno ×3, congelación/aturdimiento pierden el turno (32 % de probabilidad, los jefes resisten la mitad) | las habilidades dejan de ser solo daño plano |
 
 ## Simulación / Simulation
 
@@ -35,9 +37,9 @@
 | 60 | 2752 | 2383 | 9070 | 9643.32 | 72862 | 8 | 100% |
 | 70 | 4696 | 3812 | 10365 | 18592.03 | 116821 | 7 | 100% |
 | 80 | 5129 | 4180 | 11536 | 23100.040000000005 | 181463 | 8 | 100% |
-| 90 | 5542 | 4528 | 12595 | 28315.612499999992 | 275153 | 10 | 100% |
+| 90 | 5542 | 4528 | 12595 | 28315.612499999992 | 275153 | 10 | 99% |
 | 100 | 5938 | 4859 | 13553 | 34294.174999999996 | 994754 | 30 | 0% |
-| 125 | 5938 | 4859 | 13553 | 41494 | 847743 | 21 | 0% |
+| 125 | 5938 | 4859 | 13553 | 41494 | 847743 | 21 | 27% |
 | 150 | 5938 | 4859 | 13553 | 47432 | 10847536 | 229 | 0% |
 | 175 | 5938 | 4859 | 13553 | 53370 | 8323570 | 156 | 0% |
 | 200 | 5938 | 4859 | 13553 | 59308 | 98902665 | 1668 | 0% |

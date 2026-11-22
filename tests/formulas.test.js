@@ -218,3 +218,56 @@ test('streakNext: same day, consecutive day, gap and weekly cap', () => {
   assert.equal(CF.streakNext({ count: 7, last: '2026-11-22' }, '2026-11-23').count, 7, 'capped at 7');
   assert.equal(CF.streakNext({ count: 0, last: '' }, '2026-11-23').count, 1, 'first login');
 });
+
+test('rollStatus: weights, boss resist and the null case', () => {
+  assert.equal(CF.rollStatus(0.05), 'poison');
+  assert.equal(CF.rollStatus(0.15), 'burn');
+  assert.equal(CF.rollStatus(0.25), 'freeze');
+  assert.equal(CF.rollStatus(0.30), 'stun');
+  assert.equal(CF.rollStatus(0.45), null);
+  assert.equal(CF.rollStatus(0.15, 0.5), 'freeze', 'boss resist pushes the roll up one tier');
+  assert.equal(CF.rollStatus(0.4, 0.5), null, 'boss resist removes the status entirely');
+  assert.equal(CF.rollStatus(0.05, 0.5), 'poison', 'the strongest tier still lands');
+});
+
+test('addStatus + statusTick: duration, damage, expiry and the skip turn', () => {
+  let bag = CF.addStatus({}, 'poison');
+  assert.deepEqual(bag.poison, { turns: 3, pct: 5 });
+  bag = CF.addStatus(bag, 'poison');
+  assert.equal(bag.poison.turns, 3, 'refreshing keeps the max duration');
+
+  let tick = CF.statusTick(bag, 1000);
+  assert.equal(tick.damage, 50, '5 % of max HP');
+  assert.equal(tick.statuses.poison.turns, 2);
+  tick = CF.statusTick(tick.statuses, 1000);
+  tick = CF.statusTick(tick.statuses, 1000);
+  assert.deepEqual(tick.statuses, {}, 'expires after 3 ticks');
+  assert.equal(CF.statusTick({}, 100).damage, 0);
+
+  const frozen = CF.statusTick(CF.addStatus({}, 'freeze'), 100);
+  assert.equal(frozen.skip, true, 'freeze costs the monster its turn');
+  assert.equal(CF.statusTick(CF.addStatus({}, 'poison'), 100).skip, false);
+});
+
+test('patternStep: shield / heal / enrage / summon triggers and cooldowns', () => {
+  assert.deepEqual(CF.patternStep({ pattern: 'shield', turn: 5, hp: 100, maxHp: 100 }), { action: 'shield', shield: 8 });
+  assert.deepEqual(CF.patternStep({ pattern: 'shield', turn: 4, hp: 100, maxHp: 100 }), { action: 'attack' });
+  assert.deepEqual(CF.patternStep({ pattern: 'heal', hp: 49, maxHp: 100 }), { action: 'heal', heal: 8 });
+  assert.deepEqual(CF.patternStep({ pattern: 'heal', hp: 60, maxHp: 100 }), { action: 'attack' });
+  assert.deepEqual(CF.patternStep({ pattern: 'heal', hp: 20, maxHp: 100, healed: 1 }), { action: 'attack' }, 'heals only once');
+  assert.deepEqual(CF.patternStep({ pattern: 'enrage', hp: 20, maxHp: 100 }), { action: 'enrage' });
+  assert.deepEqual(CF.patternStep({ pattern: 'enrage', hp: 80, maxHp: 100 }), { action: 'attack' });
+  assert.deepEqual(CF.patternStep({ pattern: 'summon', turn: 5, hp: 100, maxHp: 100, minions: 0 }), { action: 'summon', minions: 1 });
+  assert.deepEqual(CF.patternStep({ pattern: 'summon', turn: 5, hp: 100, maxHp: 100, minions: 3 }), { action: 'attack' }, 'max 3 minions');
+  assert.deepEqual(CF.patternStep({ pattern: null, turn: 5, hp: 10, maxHp: 100 }), { action: 'attack' }, 'normal monsters never use patterns');
+});
+
+test('autoCastAllowed: always, bossOnly and burst rules', () => {
+  assert.equal(CF.autoCastAllowed('always', { isBoss: false }), true);
+  assert.equal(CF.autoCastAllowed(undefined, {}), true);
+  assert.equal(CF.autoCastAllowed('bossOnly', { isBoss: false }), false);
+  assert.equal(CF.autoCastAllowed('bossOnly', { isBoss: true }), true);
+  assert.equal(CF.autoCastAllowed('burst', { hp: 40, maxHp: 100 }), true);
+  assert.equal(CF.autoCastAllowed('burst', { hp: 80, maxHp: 100 }), false);
+  assert.equal(CF.autoCastAllowed('burst', { hp: 50, maxHp: 100 }), true, '50 % counts as burst');
+});
