@@ -77,6 +77,7 @@
 | **2.4** Audio chiptune (B15/A2.7) | ✅ Hecho / Done | `sfx()` sintetiza 8 efectos con WebAudio (sin archivos), volumen persistido, throttling por nombre y silencio durante la simulación offline |
 | **2.5** Rendimiento (`stats()`/`save()`) | ✅ Hecho / Done | `save()` coalescido (400 ms) con `flushSave()` en `pagehide`, `stats()` memoizado con `bumpStats()` |
 | **T0** Extracción i18n | ✅ Hecho / Done | `tools/extract-i18n.js` → `src/i18n/ko.auto.json` (**911 cadenas únicas**, 24 466 caracteres) |
+| **T2** UI estática (shell) | ✅ Hecho / Done | `index.html` marcado con `data-i18n` / `data-i18n-ph` (26 claves `ui.static.*`): portada, pueblo, selector de piso, HUD de combate, forja y ficha; `applyStaticI18n()` en `applyLang()` retraduce al cambiar de idioma y conserva el coreano como fallback; `.sub-head`/`.banner`/`.b-log` con `flex-wrap` y `overflow-wrap` para ES/EN al 360 px |
 | **T1** Infraestructura i18n | ✅ Hecho / Done | `src/i18n/index.js` (`t()`, `setLang()`, fallback a `ko`, log de claves faltantes), `src/i18n/{ko,en,es}.json` (**86 claves curadas, 100 % traducidas en/en+es**), `S.lang` en el save + selector `🌐 언어 / Language` |
 
 | **3.1** Prestigio / renacimiento (B3) | ✅ Hecho / Done | `S.prestige.stars` (+10 % por estrella, tope ×3), modal `🌟 프레스티지`, desbloqueo en Stage 100, reset de equipo/entrenamiento/runas conservando códice, logros, disfraces, mascotas, oro y llaves |
@@ -88,7 +89,7 @@
 | **3.4a** Inventario de equipo — datos (B5) | ✅ Hecho / Done | `S.inventory = {swords:[], armors:[]}` (20 por tipo, ids y favoritos), los drops ya no se venden solos: suben al inventario y el equipo anterior se guarda; `equipFromInventory()` mueve la forja (1.1) y devuelve la pieza anterior a la bolsa; `sellInventoryItem()` protege favoritos; `sanitize()` migra saves viejos, corta a 20 y descarta entradas corruptas |
 | **3.4b** Inventario de equipo — UI (B5) | ✅ Hecho / Done | Modal `🎒 장비 인벤토리` (fila 23) con pestañas 검/방어구, **Δ ATK/DEF y Δ DPS** por pieza, botones equipar / vender / favorito (★), contador n/20 y estado del set; `CF.setBonus()` y `CF.sellValue()` puros con tests; vender equipo 전설/신화 pide confirmación y paga llaves |
 
-**Pendiente / Pending:** solo las fases de traducción **T2/T3** (+T4/T5) y los Sprints 4–5.
+**Pendiente / Pending:** las fases de traducción **T3** (textos generados por `game.js`) y **T4/T5**, más los Sprints 4–5.
 
 > **Nota de alcance 3.4b:** el plan pedía bonus de set 2/4 piezas (+5 %/+12 %). Con dos ranuras de equipo (검 + 갑옷) el umbral 4/4 no existe, así que el bonus queda: **misma 등급 en ambas piezas → +5 %**, **par 신화 → +12 %** (el "set completo"). Un 4/4 real necesita más ranuras (anillo/amuleto) → queda como candidato a **3.4c**.
 

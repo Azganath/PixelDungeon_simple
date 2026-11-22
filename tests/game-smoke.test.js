@@ -19,6 +19,11 @@ function makeEl() {
     classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
     appendChild() {}, insertAdjacentHTML() {}, remove() {}, addEventListener() {},
     querySelectorAll() { return []; }, querySelector() { return null; },
+    attrs: {},
+    getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    hasAttribute(k) { return k in this.attrs; },
+    removeAttribute(k) { delete this.attrs[k]; },
     getBoundingClientRect() { return { left: 0, top: 0, width: 100, height: 100 }; },
     getContext() { return null; }, select() {}, click() {}, focus() {}, blur() {},
     set innerHTML(v) { this._html = v; }, get innerHTML() { return this._html || ''; },
@@ -56,6 +61,9 @@ function boot() {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   const ctx = vm.createContext(sandbox);
+  for (const f of ['src/i18n/strings.js', 'src/i18n/index.js']) {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f });
+  }
   vm.runInContext(fs.readFileSync(GAME, 'utf8'), ctx, { filename: 'game.js' });
   // Silence painting/animation so the test only checks state.
   vm.runInContext(`
@@ -73,7 +81,7 @@ function boot() {
   return {
     run: (src) => vm.runInContext(src, ctx),
     state: () => JSON.parse(JSON.stringify(vm.runInContext('S', ctx))),
-    store,
+    store, doc, els,
   };
 }
 
@@ -614,6 +622,25 @@ test('3.4b — a matching sword/armor grade activates the set bonus in stats()',
   assert.equal(g.run('MYTH.setPct'), 12, 'a full mythic pair gives 12%');
   assert.ok(g.run('PAIRED.atk') > g.run('MIXED.atk'), 'the set bonus lifts ATK');
   assert.ok(g.run('PAIRED.maxHp') > g.run('MIXED.maxHp'), 'and max HP');
+});
+
+test('T2 — the static shell retranslates at runtime and never blanks a string', () => {
+  const g = boot();
+  const label = g.doc.createElement(); label.setAttribute('data-i18n', 'ui.static.start'); label.textContent = '⚔️ 게임 시작 [Enter]';
+  const ph = g.doc.createElement(); ph.setAttribute('data-i18n-ph', 'ui.static.searchPh'); ph.setAttribute('placeholder', '층 번호 또는 보스/엘리트 검색 (예: 50, 보스)');
+  const ghost = g.doc.createElement(); ghost.setAttribute('data-i18n', 'no.such.key'); ghost.textContent = '원본 유지';
+  g.doc.querySelectorAll = (sel) => (sel === '[data-i18n]' ? [label, ghost] : sel === '[data-i18n-ph]' ? [ph] : []);
+
+  g.run("load(); S.lang = 'es'; applyLang();");
+  assert.match(label.textContent, /Empezar partida/, 'the start button is Spanish');
+  assert.match(ph.getAttribute('placeholder'), /Número de piso/, 'the placeholder is Spanish');
+  assert.equal(ghost.textContent, '원본 유지', 'a missing key keeps the existing text');
+
+  g.run("S.lang = 'en'; applyLang();");
+  assert.match(label.textContent, /Start game/, 'English is applied too');
+  g.run("S.lang = 'ko'; applyLang();");
+  assert.match(label.textContent, /게임 시작/, 'switching back restores Korean');
+  assert.equal(g.run('I18N.lang'), 'ko', 'the i18n runtime follows the save language');
 });
 
 test('sprint 2 UI — every modal renders cleanly and its handlers exist', () => {

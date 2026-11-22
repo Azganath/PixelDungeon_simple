@@ -358,3 +358,8 @@ button, select, input { font-family: var(--font); color: var(--text); }
 #import-code { height: 106px; color: var(--text); }
 .dps-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .78rem; padding: 4px 0; }
 @media (max-width: 420px) { .toast { font-size: .76rem; } }
+
+/* T2 — ES/EN strings run 20–30% longer than Korean; let shell rows wrap instead of clipping */
+.sub-head > span, .banner > span, .b-log .hd > span, .hero-name, .stage-row label { min-width: 0; overflow-wrap: anywhere; }
+.b-log .hd { flex-wrap: wrap; gap: 4px; }
+@media (max-width: 420px) { .stage-row label { white-space: normal; } }

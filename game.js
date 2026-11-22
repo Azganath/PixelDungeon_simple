@@ -1921,7 +1921,7 @@ function renderMenu(st) {
   ].map(([l, c, v]) => `<div class="gear-row"><span style="color:${c}">${l}</span>${v}</div>`).join('');
   if (document.activeElement !== $('stage-select')) renderStageSelect();
   renderWorldRow();
-  $('mod-btn').textContent = `🧩 모드 (${PD.mods.length})`;
+  $('mod-btn').textContent = `${txt('ui.static.mods', '🧩 모드')} (${PD.mods.length})`;
   const s = S.stage, k = stageKind(s), m = Math.floor(s / 50);
   const desc = { b50: '🔥 [50층 심연 대군주 보스전!]', boss: '👑 [보스전 출현!]', elite: '⭐ [엘리트 정예 + 일반 룬 드랍!]', normal: '일반 던전 탐험' }[k];
   const sub = `Stage ${s} - ${desc}${s >= 50 ? ` · 심연각성 Lv.${m}` : ''}${s < S.maxStage ? ' · 🔁 반복사냥 (골드 35%)' : ''}`;
@@ -3377,10 +3377,29 @@ function txt(key, fallback, vars) {
 }
 const LANGS = ['ko', 'en', 'es'];
 const LANG_META = [{ id: 'ko', label: '한국어', flag: '🇰🇷' }, { id: 'en', label: 'English', flag: '🇬🇧' }, { id: 'es', label: 'Español', flag: '🇪🇸' }];
+/**
+ * T2 — static shell translation. Every element carrying `data-i18n` keeps its
+ * Korean text as the fallback, so a missing dictionary or a slow script never
+ * leaves a blank screen; `data-i18n-ph` does the same for placeholders.
+ */
+function applyStaticI18n() {
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    const key = el.getAttribute('data-i18n');
+    if (!key) continue;
+    el.textContent = txt(key, el.textContent);
+  }
+  for (const el of document.querySelectorAll('[data-i18n-ph]')) {
+    const key = el.getAttribute('data-i18n-ph');
+    if (!key) continue;
+    el.setAttribute('placeholder', txt(key, el.getAttribute('placeholder') || ''));
+  }
+}
 function applyLang() {
   S.lang = LANGS.includes(S.lang) ? S.lang : 'ko';
   if (typeof I18N !== 'undefined' && I18N && typeof I18N.setLang === 'function') I18N.setLang(S.lang);
   if (typeof document !== 'undefined' && document.documentElement) document.documentElement.lang = S.lang;
+  applyStaticI18n();
 }
 function setLangName(id) {
   if (!LANGS.includes(id)) return;
